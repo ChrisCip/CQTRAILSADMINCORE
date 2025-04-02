@@ -1,11 +1,107 @@
 # Test your FastAPI endpoints
 
+# Verificar que el API está funcionando
 GET http://127.0.0.1:8000/
 Accept: application/json
 
 ###
 
-GET http://127.0.0.1:8000/hello/User
+# Listar todas las ciudades
+GET http://127.0.0.1:8000/ciudades/
 Accept: application/json
 
 ###
+
+# Obtener una ciudad específica por ID
+GET http://127.0.0.1:8000/ciudades/1
+Accept: application/json
+
+###
+
+# Crear una nueva ciudad
+POST http://127.0.0.1:8000/ciudades/
+Content-Type: application/json
+
+{
+  "Nombre": "Cancún",
+  "Estado": "Quintana Roo"
+}
+
+###
+
+# Obtener todos los usuarios
+GET http://127.0.0.1:8000/usuarios/
+Accept: application/json
+
+###
+
+# Obtener todos los vehículos disponibles
+GET http://127.0.0.1:8000/vehiculos/?disponible=true
+Accept: application/json
+
+###
+
+# Obtener todas las reservaciones
+GET http://127.0.0.1:8000/reservaciones/
+Accept: application/json
+
+# Obtener todas las reservaciones pendientes
+GET http://127.0.0.1:8000/reservaciones/?estado=Pendiente
+Accept: application/json
+
+# Obtener una reservación específica (mostrará quién la modificó)
+GET http://127.0.0.1:8000/reservaciones/1
+Accept: application/json
+
+# Aprobar una reservación (registra quién la aprobó)
+POST http://127.0.0.1:8000/reservaciones/1/aprobar
+Content-Type: application/json
+
+{
+  "IdUsuarioModificacion": 1,
+  "Comentario": "Reservación aprobada después de verificar disponibilidad"
+}
+
+# Denegar una reservación (registra quién la denegó)
+POST http://127.0.0.1:8000/reservaciones/2/denegar
+Content-Type: application/json
+
+{
+  "IdUsuarioModificacion": 1,
+  "MotivoRechazo": "No hay vehículos disponibles para las fechas solicitadas"
+}
+
+# Consultar reservación aprobada (mostrará quién la aprobó)
+GET http://127.0.0.1:8000/reservaciones/1
+Accept: application/json
+
+# Consultar reservación denegada (mostrará quién la denegó y el motivo)
+GET http://127.0.0.1:8000/reservaciones/2
+Accept: application/json
+
+### Intentar aprobar una reservación con un usuario común (dará error 403 Forbidden)
+POST http://127.0.0.1:8000/reservaciones/1/aprobar
+Content-Type: application/json
+
+{
+  "IdUsuarioModificacion": 2,  # Suponiendo que el usuario con ID 2 tiene rol "Usuario"
+  "Comentario": "Intento de aprobación por usuario común"
+}
+
+### Aprobar una reservación con un usuario empleado (funcionará)
+POST http://127.0.0.1:8000/reservaciones/1/aprobar
+Content-Type: application/json
+
+{
+  "IdUsuarioModificacion": 1,  # Suponiendo que el usuario con ID 1 tiene rol "Empleado" o superior
+  "Comentario": "Reservación aprobada después de verificar disponibilidad"
+}
+
+### Denegar una reservación con un usuario con permisos
+POST http://127.0.0.1:8000/reservaciones/2/denegar
+Content-Type: application/json
+
+{
+  "IdUsuarioModificacion": 1,  # Usuario con rol permitido
+  "MotivoRechazo": "No hay vehículos disponibles para las fechas solicitadas"
+}

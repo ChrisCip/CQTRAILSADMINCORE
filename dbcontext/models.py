@@ -141,7 +141,18 @@ class Usuarios(Base):
 
     # Relación uno-a-muchos con Empleados y Reservaciones
     Empleados: Mapped[List['Empleados']] = relationship('Empleados', back_populates='Usuarios1')
-    Reservaciones: Mapped[List['Reservaciones']] = relationship('Reservaciones', back_populates='Usuarios1')
+    Reservaciones: Mapped[List['Reservaciones']] = relationship(
+        'Reservaciones', 
+        back_populates='Usuarios1',
+        foreign_keys='Reservaciones.IdUsuario'  # Especificar que usa IdUsuario
+    )
+    
+    # Agregar relación para reservaciones modificadas
+    ReservacionesModificadas: Mapped[List['Reservaciones']] = relationship(
+        'Reservaciones',
+        back_populates='UsuarioModificacion',
+        foreign_keys='Reservaciones.IdUsuarioModificacion'
+    )
 
 
 class Empresas(Base):
@@ -205,6 +216,7 @@ class Reservaciones(Base):
         ForeignKeyConstraint(['IdEmpleado'], ['ciprian.Empleados.IdEmpleado'], name='Reservaciones_IdEmpleado_fkey'),
         ForeignKeyConstraint(['IdEmpresa'], ['ciprian.Empresas.IdEmpresa'], name='Reservaciones_IdEmpresa_fkey'),
         ForeignKeyConstraint(['IdUsuario'], ['ciprian.Usuarios.IdUsuario'], name='Reservaciones_IdUsuario_fkey'),
+        ForeignKeyConstraint(['IdUsuarioModificacion'], ['ciprian.Usuarios.IdUsuario'], name='Reservaciones_IdUsuarioModificacion_fkey'),
         PrimaryKeyConstraint('IdReservacion', name='Reservaciones_pkey'),
         {'schema': 'ciprian'}
     )
@@ -227,11 +239,29 @@ class Reservaciones(Base):
         server_default=text('CURRENT_TIMESTAMP')
     )
     FechaConfirmacion: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    
+    # Nuevos campos añadidos por el ALTER TABLE
+    IdUsuarioModificacion: Mapped[Optional[int]] = mapped_column(Integer)
+    FechaModificacion: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    MotivoRechazo: Mapped[Optional[str]] = mapped_column(String(255))
 
     # Relaciones hacia Empleados, Empresas y Usuarios
     Empleados1: Mapped[Optional['Empleados']] = relationship('Empleados', back_populates='Reservaciones')
     Empresas1: Mapped[Optional['Empresas']] = relationship('Empresas', back_populates='Reservaciones')
-    Usuarios1: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='Reservaciones')
+    
+    # Explicitar el foreign_key y asegurar que back_populates apunte a la relación correcta
+    Usuarios1: Mapped[Optional['Usuarios']] = relationship(
+        'Usuarios', 
+        back_populates='Reservaciones',
+        foreign_keys=[IdUsuario]
+    )
+    
+    # Modificar para usar back_populates en lugar de backref
+    UsuarioModificacion: Mapped[Optional['Usuarios']] = relationship(
+        'Usuarios',
+        back_populates='ReservacionesModificadas',
+        foreign_keys=[IdUsuarioModificacion]
+    )
 
     # Otras relaciones uno-a-muchos
     Notificaciones: Mapped[List['Notificaciones']] = relationship('Notificaciones', back_populates='Reservaciones1')

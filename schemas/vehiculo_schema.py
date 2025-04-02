@@ -1,0 +1,29 @@
+from pydantic import BaseModel
+from typing import Optional, List
+
+class VehiculoBase(BaseModel):
+    Placa: str
+    Modelo: str
+    TipoVehiculo: str
+    Capacidad: int
+    Ano: int
+    Price: int
+    Disponible: Optional[bool] = True
+
+class VehiculoCreate(VehiculoBase):
+    pass
+
+class VehiculoUpdate(BaseModel):
+    Placa: Optional[str] = None
+    Modelo: Optional[str] = None
+    TipoVehiculo: Optional[str] = None
+    Capacidad: Optional[int] = None
+    Ano: Optional[int] = None
+    Price: Optional[int] = None
+    Disponible: Optional[bool] = None
+
+class VehiculoResponse(VehiculoBase):
+    IdVehiculo: int
+    
+    class Config:
+        from_attributes = True
