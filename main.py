@@ -23,8 +23,7 @@ from controllers import (
 )
 
 # Crear las tablas en la base de datos si no existen
-# Comentar esta línea después de la primera ejecución para evitar sobrescribir datos
-# Base.metadata.create_all(bind=engine)
+#Base.metadata.create_all(bind=engine)
 
 # Create the FastAPI app with enhanced OpenAPI documentation
 app = FastAPI(

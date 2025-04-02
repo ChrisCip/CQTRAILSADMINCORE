@@ -9,6 +9,7 @@ class VehiculoBase(BaseModel):
     Ano: int
     Price: int
     Disponible: Optional[bool] = True
+    Image_url: Optional[str] = None
 
 class VehiculoCreate(VehiculoBase):
     pass
@@ -21,6 +22,7 @@ class VehiculoUpdate(BaseModel):
     Ano: Optional[int] = None
     Price: Optional[int] = None
     Disponible: Optional[bool] = None
+    Image_url: Optional[str] = None
 
 class VehiculoResponse(VehiculoBase):
     IdVehiculo: int
