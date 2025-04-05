@@ -6,12 +6,17 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Empleados, Empresas, Usuarios
 from schemas.empleado_schema import EmpleadoCreate, EmpleadoUpdate, EmpleadoResponse, EmpleadoDetailResponse
 from schemas.base_schemas import ResponseBase
+from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
 
 # Create router for this controller
 router = APIRouter(
     prefix="/empleados",
     tags=["Empleados"],
-    responses={404: {"description": "Empleado no encontrado"}},
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Acceso prohibido"},
+        404: {"description": "Empleado no encontrado"}
+    },
 )
 
 # Dependency to get DB session
@@ -23,13 +28,23 @@ def get_db():
         db.close()
 
 @router.get("/", response_model=ResponseBase[List[EmpleadoResponse]])
-def get_empleados(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_empleados(
+    skip: int = 0, 
+    limit: int = 100, 
+    id_empresa: int = None, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Get all employees"""
     empleados = db.query(Empleados).offset(skip).limit(limit).all()
     return ResponseBase[List[EmpleadoResponse]](data=empleados)
 
 @router.get("/{empleado_id}", response_model=ResponseBase[EmpleadoDetailResponse])
-def get_empleado(empleado_id: int, db: Session = Depends(get_db)):
+def get_empleado(
+    empleado_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Get an employee by ID with company and user details"""
     empleado = db.query(Empleados).filter(Empleados.IdEmpleado == empleado_id).first()
     if empleado is None:
@@ -37,7 +52,11 @@ def get_empleado(empleado_id: int, db: Session = Depends(get_db)):
     return ResponseBase[EmpleadoDetailResponse](data=empleado)
 
 @router.post("/", response_model=ResponseBase[EmpleadoResponse], status_code=status.HTTP_201_CREATED)
-def create_empleado(empleado: EmpleadoCreate, db: Session = Depends(get_db)):
+def create_empleado(
+    empleado: EmpleadoCreate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+):
     """Create a new employee"""
     # Check if company exists
     db_empresa = db.query(Empresas).filter(Empresas.IdEmpresa == empleado.IdEmpresa).first()
@@ -64,7 +83,12 @@ def create_empleado(empleado: EmpleadoCreate, db: Session = Depends(get_db)):
     )
 
 @router.put("/{empleado_id}", response_model=ResponseBase[EmpleadoResponse])
-def update_empleado(empleado_id: int, empleado: EmpleadoUpdate, db: Session = Depends(get_db)):
+def update_empleado(
+    empleado_id: int, 
+    empleado: EmpleadoUpdate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+):
     """Update an employee"""
     db_empleado = db.query(Empleados).filter(Empleados.IdEmpleado == empleado_id).first()
     if db_empleado is None:
@@ -100,7 +124,11 @@ def update_empleado(empleado_id: int, empleado: EmpleadoUpdate, db: Session = De
     )
 
 @router.delete("/{empleado_id}", response_model=ResponseBase)
-def delete_empleado(empleado_id: int, db: Session = Depends(get_db)):
+def delete_empleado(
+    empleado_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+):
     """Delete an employee"""
     db_empleado = db.query(Empleados).filter(Empleados.IdEmpleado == empleado_id).first()
     if db_empleado is None:

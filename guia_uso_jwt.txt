@@ -1,0 +1,50 @@
+# Guía de Uso de JWT para Desarrolladores
+
+## Cómo implementar la protección JWT en un controlador
+
+1. **Importaciones necesarias**:
+```python
+from dependencies.auth import get_current_user, require_role, require_admin
+```
+
+2. **Proteger endpoints**:
+
+- Para protección básica (cualquier usuario autenticado):
+```python
+@router.get("/ruta", ...)
+def mi_funcion(..., current_user = Depends(get_current_user)):
+    # La petición solo procede si hay un token JWT válido
+```
+
+- Para protección basada en roles:
+```python
+@router.post("/ruta", ...)
+def mi_funcion(..., current_user = Depends(require_role(["Administrador", "Gerente"]))):
+    # La petición solo procede si el usuario tiene alguno de los roles especificados
+```
+
+- Para endpoints exclusivos de administradores:
+```python
+@router.delete("/ruta", ...)
+def mi_funcion(..., current_user = Depends(require_admin)):
+    # La petición solo procede si el usuario es administrador
+```
+
+3. **Usar los datos del usuario autenticado**:
+```python
+@router.get("/ruta", ...)
+def mi_funcion(..., current_user = Depends(get_current_user)):
+    # Puedes acceder a:
+    usuario_id = current_user.user_id
+    email = current_user.email
+    rol = current_user.role
+    permisos = current_user.permissions
+```
+
+## Solución a problemas comunes
+
+- **Error "get_current_user is not defined"**: Asegúrate de importar `get_current_user` de `dependencies.auth`.
+  
+- **Error con el parámetro "user_email"**: Usa `email` en lugar de `user_email` al llamar a `create_access_token`.
+
+- **Error 401 en Swagger UI**: Asegúrate de ingresar SOLO el token (sin la palabra "bearer") en el cuadro de autorización.

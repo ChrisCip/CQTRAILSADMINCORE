@@ -6,12 +6,17 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import VehiculosReservaciones, Vehiculos, Reservaciones
 from schemas.vehiculoreservacion_schema import VehiculoReservacionCreate, VehiculoReservacionUpdate, VehiculoReservacionResponse, VehiculoReservacionDetailResponse
 from schemas.base_schemas import ResponseBase
+from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
 
 # Create router for this controller
 router = APIRouter(
     prefix="/vehiculos-reservaciones",
     tags=["VehiculosReservaciones"],
-    responses={404: {"description": "Asignación de vehículo no encontrada"}},
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Acceso prohibido"},
+        404: {"description": "Asignación de vehículo no encontrada"}
+    },
 )
 
 # Dependency to get DB session
@@ -29,7 +34,8 @@ def get_vehiculos_reservaciones(
     id_vehiculo: int = None, 
     id_reservacion: int = None,
     estado: str = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Protección JWT
 ):
     """Get all vehicle-reservation assignments with optional filters"""
     query = db.query(VehiculosReservaciones)
@@ -47,7 +53,12 @@ def get_vehiculos_reservaciones(
     return ResponseBase[List[VehiculoReservacionDetailResponse]](data=vehiculos_reservaciones)
 
 @router.get("/{id_vehiculo}/{id_reservacion}", response_model=ResponseBase[VehiculoReservacionDetailResponse])
-def get_vehiculo_reservacion(id_vehiculo: int, id_reservacion: int, db: Session = Depends(get_db)):
+def get_vehiculo_reservacion(
+    id_vehiculo: int, 
+    id_reservacion: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Protección JWT
+):
     """Get a vehicle-reservation assignment by composite key"""
     vehiculo_reservacion = db.query(VehiculosReservaciones).filter(
         VehiculosReservaciones.IdVehiculo == id_vehiculo,
@@ -60,7 +71,11 @@ def get_vehiculo_reservacion(id_vehiculo: int, id_reservacion: int, db: Session 
     return ResponseBase[VehiculoReservacionDetailResponse](data=vehiculo_reservacion)
 
 @router.post("/", response_model=ResponseBase[VehiculoReservacionResponse], status_code=status.HTTP_201_CREATED)
-def create_vehiculo_reservacion(vehiculo_reservacion: VehiculoReservacionCreate, db: Session = Depends(get_db)):
+def create_vehiculo_reservacion(
+    vehiculo_reservacion: VehiculoReservacionCreate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Protección JWT con roles específicos
+):
     """Create a new vehicle-reservation assignment"""
     # Check if vehicle exists and is available
     vehiculo = db.query(Vehiculos).filter(Vehiculos.IdVehiculo == vehiculo_reservacion.IdVehiculo).first()
@@ -111,7 +126,13 @@ def create_vehiculo_reservacion(vehiculo_reservacion: VehiculoReservacionCreate,
     )
 
 @router.put("/{id_vehiculo}/{id_reservacion}", response_model=ResponseBase[VehiculoReservacionResponse])
-def update_vehiculo_reservacion(id_vehiculo: int, id_reservacion: int, vehiculo_reservacion: VehiculoReservacionUpdate, db: Session = Depends(get_db)):
+def update_vehiculo_reservacion(
+    id_vehiculo: int, 
+    id_reservacion: int, 
+    vehiculo_reservacion: VehiculoReservacionUpdate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Protección JWT con roles específicos
+):
     """Update a vehicle-reservation assignment"""
     db_vehiculo_reservacion = db.query(VehiculosReservaciones).filter(
         VehiculosReservaciones.IdVehiculo == id_vehiculo,
@@ -133,7 +154,12 @@ def update_vehiculo_reservacion(id_vehiculo: int, id_reservacion: int, vehiculo_
     )
 
 @router.delete("/{id_vehiculo}/{id_reservacion}", response_model=ResponseBase)
-def delete_vehiculo_reservacion(id_vehiculo: int, id_reservacion: int, db: Session = Depends(get_db)):
+def delete_vehiculo_reservacion(
+    id_vehiculo: int, 
+    id_reservacion: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador"]))  # Solo administradores pueden eliminar
+):
     """Delete a vehicle-reservation assignment"""
     db_vehiculo_reservacion = db.query(VehiculosReservaciones).filter(
         VehiculosReservaciones.IdVehiculo == id_vehiculo,

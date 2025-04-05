@@ -1,0 +1,43 @@
+# Instrucciones para autenticarse en Swagger UI
+
+## 1. Obtener un token JWT
+
+Primero necesitas obtener un token JWT de alguna de estas formas:
+
+### Opción A: Usando el endpoint de login
+1. Ve al endpoint `/auth/login`
+2. Haz clic en "Try it out"
+3. Ingresa tus credenciales (email y password)
+4. Haz clic en "Execute"
+5. En la respuesta, copia el valor de `access_token` (sin comillas)
+
+### Opción B: Usando el endpoint de registro
+1. Ve al endpoint `/auth/register`
+2. Haz clic en "Try it out"
+3. Completa los datos de registro
+4. Haz clic en "Execute"
+5. En la respuesta, copia el valor de `access_token` (sin comillas)
+
+## 2. Configurar la autenticación
+
+1. Haz clic en el botón "Authorize" (botón con candado) en la parte superior de la página
+2. En el campo de texto, ingresa SOLAMENTE el token JWT que copiaste
+   - NO incluyas la palabra "bearer"
+   - NO incluyas comillas
+   - Ingresa únicamente el token (ejemplo: eyJhbGciOiJIUzI1...)
+3. Haz clic en "Authorize"
+4. Cierra el diálogo haciendo clic en "Close"
+
+## 3. Usar los endpoints protegidos
+
+Ahora puedes usar cualquier endpoint protegido. El token se enviará automáticamente con cada solicitud.
+
+## Resolución de problemas comunes
+
+- **Error 401 Unauthorized**: Verifica que tu token sea válido y no haya expirado
+- **Error en la autorización**: Asegúrate de ingresar SOLO el token sin "bearer" y sin comillas
+- **Token rechazado**: Si tu token fue rechazado, intenta obtener uno nuevo usando login
+
+## Formato del token
+
+El token debe verse similar a esto:

@@ -6,12 +6,13 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Permisos
 from schemas.permiso_schema import PermisoCreate, PermisoUpdate, PermisoResponse
 from schemas.base_schemas import ResponseBase
+from dependencies.auth import get_current_user, require_admin
 
 # Create router for this controller
 router = APIRouter(
     prefix="/permisos",
     tags=["Permisos"],
-    responses={404: {"description": "Permiso no encontrado"}},
+    responses={401: {"description": "No autenticado"}, 403: {"description": "Acceso prohibido"}},
 )
 
 # Dependency to get DB session
@@ -23,13 +24,22 @@ def get_db():
         db.close()
 
 @router.get("/", response_model=ResponseBase[List[PermisoResponse]])
-def get_permisos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_permisos(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+):
     """Get all permissions"""
     permisos = db.query(Permisos).offset(skip).limit(limit).all()
     return ResponseBase[List[PermisoResponse]](data=permisos)
 
 @router.get("/{permiso_id}", response_model=ResponseBase[PermisoResponse])
-def get_permiso(permiso_id: int, db: Session = Depends(get_db)):
+def get_permiso(
+    permiso_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+):
     """Get a permission by ID"""
     permiso = db.query(Permisos).filter(Permisos.IdPermiso == permiso_id).first()
     if permiso is None:
@@ -37,7 +47,11 @@ def get_permiso(permiso_id: int, db: Session = Depends(get_db)):
     return ResponseBase[PermisoResponse](data=permiso)
 
 @router.post("/", response_model=ResponseBase[PermisoResponse], status_code=status.HTTP_201_CREATED)
-def create_permiso(permiso: PermisoCreate, db: Session = Depends(get_db)):
+def create_permiso(
+    permiso: PermisoCreate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+):
     """Create a new permission"""
     db_permiso = Permisos(**permiso.model_dump())
     db.add(db_permiso)
@@ -49,7 +63,12 @@ def create_permiso(permiso: PermisoCreate, db: Session = Depends(get_db)):
     )
 
 @router.put("/{permiso_id}", response_model=ResponseBase[PermisoResponse])
-def update_permiso(permiso_id: int, permiso: PermisoUpdate, db: Session = Depends(get_db)):
+def update_permiso(
+    permiso_id: int, 
+    permiso: PermisoUpdate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+):
     """Update a permission"""
     db_permiso = db.query(Permisos).filter(Permisos.IdPermiso == permiso_id).first()
     if db_permiso is None:
@@ -61,13 +80,18 @@ def update_permiso(permiso_id: int, permiso: PermisoUpdate, db: Session = Depend
     
     db.commit()
     db.refresh(db_permiso)
+    
     return ResponseBase[PermisoResponse](
         message="Permiso actualizado exitosamente", 
         data=db_permiso
     )
 
 @router.delete("/{permiso_id}", response_model=ResponseBase)
-def delete_permiso(permiso_id: int, db: Session = Depends(get_db)):
+def delete_permiso(
+    permiso_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+):
     """Delete a permission"""
     db_permiso = db.query(Permisos).filter(Permisos.IdPermiso == permiso_id).first()
     if db_permiso is None:
@@ -75,4 +99,5 @@ def delete_permiso(permiso_id: int, db: Session = Depends(get_db)):
     
     db.delete(db_permiso)
     db.commit()
+    
     return ResponseBase(message="Permiso eliminado exitosamente")

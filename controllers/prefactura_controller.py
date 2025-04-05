@@ -6,12 +6,17 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import PreFacturas, Reservaciones
 from schemas.prefactura_schema import PreFacturaCreate, PreFacturaUpdate, PreFacturaResponse, PreFacturaDetailResponse
 from schemas.base_schemas import ResponseBase
+from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
 
 # Create router for this controller
 router = APIRouter(
     prefix="/prefacturas",
     tags=["PreFacturas"],
-    responses={404: {"description": "PreFactura no encontrada"}},
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Acceso prohibido"},
+        404: {"description": "PreFactura no encontrada"}
+    },
 )
 
 # Dependency to get DB session
@@ -23,7 +28,13 @@ def get_db():
         db.close()
 
 @router.get("/", response_model=ResponseBase[List[PreFacturaResponse]])
-def get_prefacturas(skip: int = 0, limit: int = 100, id_reservacion: int = None, db: Session = Depends(get_db)):
+def get_prefacturas(
+    skip: int = 0, 
+    limit: int = 100, 
+    id_reservacion: int = None, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Get all pre-invoices with optional filters"""
     query = db.query(PreFacturas)
     
@@ -34,7 +45,11 @@ def get_prefacturas(skip: int = 0, limit: int = 100, id_reservacion: int = None,
     return ResponseBase[List[PreFacturaResponse]](data=prefacturas)
 
 @router.get("/{prefactura_id}", response_model=ResponseBase[PreFacturaDetailResponse])
-def get_prefactura(prefactura_id: int, db: Session = Depends(get_db)):
+def get_prefactura(
+    prefactura_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Get a pre-invoice by ID with reservation details"""
     prefactura = db.query(PreFacturas).filter(PreFacturas.IdPreFactura == prefactura_id).first()
     if prefactura is None:
@@ -42,7 +57,11 @@ def get_prefactura(prefactura_id: int, db: Session = Depends(get_db)):
     return ResponseBase[PreFacturaDetailResponse](data=prefactura)
 
 @router.post("/", response_model=ResponseBase[PreFacturaResponse], status_code=status.HTTP_201_CREATED)
-def create_prefactura(prefactura: PreFacturaCreate, db: Session = Depends(get_db)):
+def create_prefactura(
+    prefactura: PreFacturaCreate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+):
     """Create a new pre-invoice"""
     # Check if reservation exists
     reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == prefactura.IdReservacion).first()
@@ -71,7 +90,12 @@ def create_prefactura(prefactura: PreFacturaCreate, db: Session = Depends(get_db
     )
 
 @router.put("/{prefactura_id}", response_model=ResponseBase[PreFacturaResponse])
-def update_prefactura(prefactura_id: int, prefactura: PreFacturaUpdate, db: Session = Depends(get_db)):
+def update_prefactura(
+    prefactura_id: int, 
+    prefactura: PreFacturaUpdate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+):
     """Update a pre-invoice"""
     db_prefactura = db.query(PreFacturas).filter(PreFacturas.IdPreFactura == prefactura_id).first()
     if db_prefactura is None:
@@ -97,7 +121,11 @@ def update_prefactura(prefactura_id: int, prefactura: PreFacturaUpdate, db: Sess
     )
 
 @router.delete("/{prefactura_id}", response_model=ResponseBase)
-def delete_prefactura(prefactura_id: int, db: Session = Depends(get_db)):
+def delete_prefactura(
+    prefactura_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+):
     """Delete a pre-invoice"""
     db_prefactura = db.query(PreFacturas).filter(PreFacturas.IdPreFactura == prefactura_id).first()
     if db_prefactura is None:

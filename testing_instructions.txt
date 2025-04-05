@@ -1,0 +1,50 @@
+# Instrucciones para probar la API
+
+## 1. Probar el endpoint de debug de roles
+GET http://127.0.0.1:8000/auth/debug/roles
+
+Este endpoint mostrará todos los roles que existen en la base de datos con sus IDs y nombres.
+
+## 2. Registrar un usuario
+POST http://127.0.0.1:8000/auth/register
+Content-Type: application/json
+
+{
+  "email": "prueba@example.com",
+  "password": "contraseña123",
+  "confirm_password": "contraseña123",
+  "nombre": "Usuario",
+  "apellido": "Prueba"
+}
+
+## 3. Iniciar sesión
+POST http://127.0.0.1:8000/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "contraseña"
+}
+
+## 4. Usar el token JWT correctamente
+
+IMPORTANTE: Al recibir el token JWT en la respuesta de login, debes usarlo de la siguiente manera:
+
+- En Swagger UI:
+  1. Haz clic en el botón "Authorize" (ícono del candado)
+  2. Ingresa SOLO el token (sin la palabra "bearer" y sin comillas)
+  3. Haz clic en "Authorize" y luego "Close"
+
+- En solicitudes HTTP directas:
+  Agrega un encabezado con formato:
+  Authorization: Bearer <token>
+
+Ejemplo:
+
+## 5. Probar autenticación
+GET http://127.0.0.1:8000/auth/test-auth
+Authorization: Bearer <token_obtenido_del_login>
+
+## 6. Ver información de usuario actual
+GET http://127.0.0.1:8000/auth/me
+Authorization: Bearer <token_obtenido_del_login>

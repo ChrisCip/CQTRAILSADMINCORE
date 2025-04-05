@@ -11,12 +11,17 @@ from schemas.reservacion_schema import (
     ReservacionApproval, ReservacionRejection
 )
 from schemas.base_schemas import ResponseBase
+from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
 
 # Create router for this controller
 router = APIRouter(
     prefix="/reservaciones",
     tags=["Reservaciones"],
-    responses={404: {"description": "Reservación no encontrada"}},
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Acceso prohibido"},
+        404: {"description": "Reservación no encontrada"}
+    },
 )
 
 # Dependency to get DB session
@@ -54,7 +59,8 @@ def get_reservaciones(
     fecha_fin: Optional[datetime] = Query(None, description="Filtrar por fecha fin máxima"),
     id_usuario: Optional[int] = Query(None, description="Filtrar por ID de usuario"),
     id_empresa: Optional[int] = Query(None, description="Filtrar por ID de empresa"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
 ):
     """
     Obtener todas las reservaciones con filtros opcionales
@@ -87,7 +93,8 @@ def get_reservaciones(
 @router.get("/{reservacion_id}", response_model=ResponseBase[ReservacionDetailResponse])
 def get_reservacion(
     reservacion_id: int = Path(..., description="ID único de la reservación", ge=1),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
 ):
     """
     Obtener información detallada de una reservación específica
@@ -116,7 +123,8 @@ def get_reservacion(
 @router.post("/", response_model=ResponseBase[ReservacionResponse], status_code=status.HTTP_201_CREATED)
 def create_reservacion(
     reservacion: ReservacionCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
 ):
     """Create a new reservation"""
     # Validate business logic constraints
@@ -177,7 +185,8 @@ def update_reservacion(
     reservacion_id: int, 
     reservacion: ReservacionUpdate,
     id_usuario_modificacion: int = Query(..., description="ID del usuario que realiza la modificación"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
 ):
     """
     Actualizar una reservación
@@ -255,7 +264,8 @@ def update_reservacion(
 def aprobar_reservacion(
     reservacion_id: int = Path(..., description="ID de la reservación a aprobar"),
     datos: ReservacionApproval = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente", "Empleado"]))  # Añadir protección JWT con roles
 ):
     """
     Aprobar una reservación
@@ -309,7 +319,8 @@ def aprobar_reservacion(
 def denegar_reservacion(
     reservacion_id: int = Path(..., description="ID de la reservación a denegar"),
     datos: ReservacionRejection = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente", "Empleado"]))  # Añadir protección JWT con roles
 ):
     """
     Denegar una reservación
@@ -363,7 +374,8 @@ def denegar_reservacion(
 def delete_reservacion(
     reservacion_id: int = Path(..., description="ID de la reservación a eliminar"),
     id_usuario_modificacion: int = Query(..., description="ID del usuario que realiza la eliminación"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
 ):
     """Delete a reservation"""
     db_reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == reservacion_id).first()

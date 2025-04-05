@@ -6,12 +6,17 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Notificaciones, Reservaciones
 from schemas.notificacion_schema import NotificacionCreate, NotificacionUpdate, NotificacionResponse, NotificacionDetailResponse
 from schemas.base_schemas import ResponseBase
+from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
 
 # Create router for this controller
 router = APIRouter(
     prefix="/notificaciones",
     tags=["Notificaciones"],
-    responses={404: {"description": "Notificación no encontrada"}},
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Acceso prohibido"},
+        404: {"description": "Notificación no encontrada"}
+    },
 )
 
 # Dependency to get DB session
@@ -23,7 +28,13 @@ def get_db():
         db.close()
 
 @router.get("/", response_model=ResponseBase[List[NotificacionResponse]])
-def get_notificaciones(skip: int = 0, limit: int = 100, id_reservacion: int = None, db: Session = Depends(get_db)):
+def get_notificaciones(
+    skip: int = 0, 
+    limit: int = 100, 
+    id_reservacion: int = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Get all notifications with optional filters"""
     query = db.query(Notificaciones)
     
@@ -34,7 +45,11 @@ def get_notificaciones(skip: int = 0, limit: int = 100, id_reservacion: int = No
     return ResponseBase[List[NotificacionResponse]](data=notificaciones)
 
 @router.get("/{notificacion_id}", response_model=ResponseBase[NotificacionDetailResponse])
-def get_notificacion(notificacion_id: int, db: Session = Depends(get_db)):
+def get_notificacion(
+    notificacion_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Get a notification by ID with reservation details"""
     notificacion = db.query(Notificaciones).filter(Notificaciones.IdNotificacion == notificacion_id).first()
     if notificacion is None:
@@ -42,7 +57,11 @@ def get_notificacion(notificacion_id: int, db: Session = Depends(get_db)):
     return ResponseBase[NotificacionDetailResponse](data=notificacion)
 
 @router.post("/", response_model=ResponseBase[NotificacionResponse], status_code=status.HTTP_201_CREATED)
-def create_notificacion(notificacion: NotificacionCreate, db: Session = Depends(get_db)):
+def create_notificacion(
+    notificacion: NotificacionCreate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+):
     """Create a new notification"""
     # Check if reservation exists
     reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == notificacion.IdReservacion).first()
@@ -59,7 +78,12 @@ def create_notificacion(notificacion: NotificacionCreate, db: Session = Depends(
     )
 
 @router.put("/{notificacion_id}", response_model=ResponseBase[NotificacionResponse])
-def update_notificacion(notificacion_id: int, notificacion: NotificacionUpdate, db: Session = Depends(get_db)):
+def update_notificacion(
+    notificacion_id: int, 
+    notificacion: NotificacionUpdate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Update a notification"""
     db_notificacion = db.query(Notificaciones).filter(Notificaciones.IdNotificacion == notificacion_id).first()
     if db_notificacion is None:
@@ -76,8 +100,31 @@ def update_notificacion(notificacion_id: int, notificacion: NotificacionUpdate, 
         data=db_notificacion
     )
 
+@router.patch("/{notificacion_id}/marcar-leida", response_model=ResponseBase[NotificacionResponse])
+def marcar_notificacion_leida(
+    notificacion_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
+    """Mark notification as read"""
+    db_notificacion = db.query(Notificaciones).filter(Notificaciones.IdNotificacion == notificacion_id).first()
+    if db_notificacion is None:
+        raise HTTPException(status_code=404, detail="Notificación no encontrada")
+    
+    db_notificacion.Leida = True
+    db.commit()
+    db.refresh(db_notificacion)
+    return ResponseBase[NotificacionResponse](
+        message="Notificación marcada como leída", 
+        data=db_notificacion
+    )
+
 @router.delete("/{notificacion_id}", response_model=ResponseBase)
-def delete_notificacion(notificacion_id: int, db: Session = Depends(get_db)):
+def delete_notificacion(
+    notificacion_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+):
     """Delete a notification"""
     db_notificacion = db.query(Notificaciones).filter(Notificaciones.IdNotificacion == notificacion_id).first()
     if db_notificacion is None:

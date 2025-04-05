@@ -6,12 +6,15 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Ciudades
 from schemas.ciudad_schema import CiudadCreate, CiudadUpdate, CiudadResponse
 from schemas.base_schemas import ResponseBase
+from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
 
 # Create router for this controller
 router = APIRouter(
     prefix="/ciudades",
     tags=["Ciudades"],
     responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Acceso prohibido"},
         404: {"description": "Ciudad no encontrada"},
         500: {"description": "Error interno del servidor"}
     },
@@ -29,7 +32,8 @@ def get_db():
 def get_ciudades(
     skip: int = Query(0, description="Número de registros a omitir", ge=0),
     limit: int = Query(100, description="Número máximo de registros a retornar", le=100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
 ):
     """
     Obtener todas las ciudades registradas en el sistema.
@@ -48,7 +52,8 @@ def get_ciudades(
 @router.get("/{ciudad_id}", response_model=ResponseBase[CiudadResponse])
 def get_ciudad(
     ciudad_id: int = Path(..., description="ID único de la ciudad a consultar", ge=1),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
 ):
     """
     Obtener información detallada de una ciudad específica por su ID.
@@ -71,7 +76,8 @@ def get_ciudad(
 @router.post("/", response_model=ResponseBase[CiudadResponse], status_code=status.HTTP_201_CREATED)
 def create_ciudad(
     ciudad: CiudadCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador"]))  # Añadir protección JWT con rol admin
 ):
     """
     Crear una nueva ciudad en el sistema.
@@ -96,7 +102,8 @@ def create_ciudad(
 def update_ciudad(
     ciudad_id: int = Path(..., description="ID único de la ciudad a actualizar", ge=1),
     ciudad: CiudadUpdate = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador"]))  # Añadir protección JWT con rol admin
 ):
     """
     Actualizar información de una ciudad existente.
@@ -131,7 +138,8 @@ def update_ciudad(
 @router.delete("/{ciudad_id}", response_model=ResponseBase)
 def delete_ciudad(
     ciudad_id: int = Path(..., description="ID único de la ciudad a eliminar", ge=1),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
 ):
     """
     Eliminar una ciudad del sistema.

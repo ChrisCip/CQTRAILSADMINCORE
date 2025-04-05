@@ -1,0 +1,8 @@
+# Solución de problemas con PyJWT
+
+Sigue estos pasos en orden para resolver los problemas con JWT:
+
+## 1. Instala PyJWT correctamente
+
+Ejecuta estos comandos en tu terminal:
+

@@ -6,12 +6,17 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Empresas
 from schemas.empresa_schema import EmpresaCreate, EmpresaUpdate, EmpresaResponse
 from schemas.base_schemas import ResponseBase
+from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
 
 # Create router for this controller
 router = APIRouter(
     prefix="/empresas",
     tags=["Empresas"],
-    responses={404: {"description": "Empresa no encontrada"}},
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Acceso prohibido"},
+        404: {"description": "Empresa no encontrada"}
+    },
 )
 
 # Dependency to get DB session
@@ -23,13 +28,22 @@ def get_db():
         db.close()
 
 @router.get("/", response_model=ResponseBase[List[EmpresaResponse]])
-def get_empresas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_empresas(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Get all companies"""
     empresas = db.query(Empresas).offset(skip).limit(limit).all()
     return ResponseBase[List[EmpresaResponse]](data=empresas)
 
 @router.get("/{empresa_id}", response_model=ResponseBase[EmpresaResponse])
-def get_empresa(empresa_id: int, db: Session = Depends(get_db)):
+def get_empresa(
+    empresa_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)  # Añadir protección JWT
+):
     """Get a company by ID"""
     empresa = db.query(Empresas).filter(Empresas.IdEmpresa == empresa_id).first()
     if empresa is None:
@@ -37,7 +51,11 @@ def get_empresa(empresa_id: int, db: Session = Depends(get_db)):
     return ResponseBase[EmpresaResponse](data=empresa)
 
 @router.post("/", response_model=ResponseBase[EmpresaResponse], status_code=status.HTTP_201_CREATED)
-def create_empresa(empresa: EmpresaCreate, db: Session = Depends(get_db)):
+def create_empresa(
+    empresa: EmpresaCreate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+):
     """Create a new company"""
     db_empresa = Empresas(**empresa.model_dump())
     db.add(db_empresa)
@@ -49,7 +67,12 @@ def create_empresa(empresa: EmpresaCreate, db: Session = Depends(get_db)):
     )
 
 @router.put("/{empresa_id}", response_model=ResponseBase[EmpresaResponse])
-def update_empresa(empresa_id: int, empresa: EmpresaUpdate, db: Session = Depends(get_db)):
+def update_empresa(
+    empresa_id: int, 
+    empresa: EmpresaUpdate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+):
     """Update a company"""
     db_empresa = db.query(Empresas).filter(Empresas.IdEmpresa == empresa_id).first()
     if db_empresa is None:
@@ -67,7 +90,11 @@ def update_empresa(empresa_id: int, empresa: EmpresaUpdate, db: Session = Depend
     )
 
 @router.delete("/{empresa_id}", response_model=ResponseBase)
-def delete_empresa(empresa_id: int, db: Session = Depends(get_db)):
+def delete_empresa(
+    empresa_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+):
     """Delete a company"""
     db_empresa = db.query(Empresas).filter(Empresas.IdEmpresa == empresa_id).first()
     if db_empresa is None:
