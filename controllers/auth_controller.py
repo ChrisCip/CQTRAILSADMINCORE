@@ -6,6 +6,9 @@ import bcrypt
 import time
 import os
 from dotenv import load_dotenv
+from fastapi.responses import JSONResponse
+from datetime import datetime, timedelta
+import logging
 
 from dbcontext.mydb import SessionLocal
 from dbcontext.models import Usuarios, Roles, Permisos
@@ -13,6 +16,9 @@ from schemas.auth_schema import LoginRequest, RegisterRequest, TokenResponse, Us
 from schemas.base_schemas import ResponseBase
 from dependencies.auth import get_current_user, require_role, get_current_user_optional
 from utils.jwt_utils import create_access_token, decode_token, JWT_EXPIRATION_SECONDS
+
+# Configure logger
+logger = logging.getLogger("auth_controller")
 
 # Load environment variables
 load_dotenv()
@@ -323,7 +329,7 @@ async def get_token(
     status_code=status.HTTP_201_CREATED,
     include_in_schema=True,
     summary="Registrar usuario",
-    description="Registra un nuevo usuario en el sistema",
+    description="Registra un nuevo usuario en el sistema, permitiendo especificar el rol por ID",
     responses={
         201: {
             "description": "Usuario registrado exitosamente",
@@ -348,8 +354,7 @@ async def get_token(
             }
         },
         400: {"description": "Datos de entrada inválidos o email ya registrado"},
-        401: {"description": "No autenticado"},
-        403: {"description": "No autorizado (requiere rol de Administrador)"}
+        404: {"description": "Rol no encontrado"}
     },
     openapi_extra={
         "requestBody": {
@@ -385,6 +390,11 @@ async def get_token(
                                 "minLength": 2,
                                 "maxLength": 30,
                                 "example": "Pérez"
+                            },
+                            "idRol": {
+                                "type": "integer",
+                                "description": "ID del rol a asignar (2=Admin, 3=Empleado, default=4 Usuario)",
+                                "example": 3
                             }
                         }
                     },
@@ -393,7 +403,8 @@ async def get_token(
                         "password": "contraseña123",
                         "confirm_password": "contraseña123",
                         "nombre": "Juan",
-                        "apellido": "Pérez"
+                        "apellido": "Pérez",
+                        "idRol": 3
                     }
                 }
             }
@@ -412,6 +423,7 @@ async def register(
     - **confirm_password**: Debe coincidir con la contraseña
     - **nombre**: Nombre del usuario
     - **apellido**: Apellido del usuario
+    - **idRol**: (Opcional) ID del rol a asignar (2=Admin, 3=Empleado, default=4 Usuario)
     """
     # Check if email already exists
     existing_user = db.query(Usuarios).filter(Usuarios.Email == register_data.email).first()
@@ -421,21 +433,46 @@ async def register(
             detail="Este email ya está registrado"
         )
     
-    # Get "Usuario" role by default using ID instead of name
-    user_role = db.query(Roles).filter(Roles.IdRol == 2).first()
-    if not user_role:
-        # Fallback to find by name if ID doesn't work
-        user_role = db.query(Roles).filter(
-            Roles.NombreRol.ilike("usuario")
-        ).first()
+    # Determine role to assign
+    if register_data.idRol is not None:
+        # Verify role exists
+        role = db.query(Roles).filter(Roles.IdRol == register_data.idRol).first()
+        if not role:
+            # List available roles for better error message
+            available_roles = db.query(Roles).all()
+            role_info = [f"{r.IdRol}:{r.NombreRol}" for r in available_roles]
+            
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"El rol con ID {register_data.idRol} no existe. Roles disponibles: {', '.join(role_info)}"
+            )
+            
+        role_id = register_data.idRol
+        role_name = role.NombreRol
         
-    if not user_role:
-        roles = db.query(Roles).all()
-        role_names = [f"{role.IdRol}:{role.NombreRol}" for role in roles]
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error: No se encontró el rol 'Usuario'. Roles disponibles: {', '.join(role_names)}"
-        )
+        logger.info(f"Asignando rol ID {role_id} ({role_name}) especificado en la solicitud")
+    else:
+        # Get "Usuario" role by default using ID
+        role = db.query(Roles).filter(Roles.NombreRol.ilike("usuario")).first()
+        
+        if not role:
+            # Fallback to a default role
+            role = db.query(Roles).filter(Roles.IdRol == 4).first()
+            
+        if not role:
+            # If still no role found, list available roles for better error message
+            available_roles = db.query(Roles).all()
+            role_info = [f"{r.IdRol}:{r.NombreRol}" for r in available_roles]
+            
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: No se encontró el rol 'Usuario'. Roles disponibles: {', '.join(role_info)}"
+            )
+            
+        role_id = role.IdRol
+        role_name = role.NombreRol
+        
+        logger.info(f"Asignando rol ID {role_id} ({role_name}) por defecto")
     
     # Hash password
     hashed_password = hash_password(register_data.password)
@@ -446,7 +483,7 @@ async def register(
         PasswordHash=hashed_password,
         Nombre=register_data.nombre,
         Apellido=register_data.apellido,
-        IdRol=user_role.IdRol,
+        IdRol=role_id,
         Activo=True
     )
     
@@ -456,14 +493,14 @@ async def register(
     
     # Get user permissions
     permissions_list = []
-    if user_role.Permisos_:
-        permissions_list = [permiso.NombrePermiso for permiso in user_role.Permisos_]
+    if role.Permisos_:
+        permissions_list = [permiso.NombrePermiso for permiso in role.Permisos_]
     
     # Generate JWT token for immediate login
     token = create_access_token(
         user_id=new_user.IdUsuario,
-        email=new_user.Email,  # Cambiar de user_email a email
-        role=user_role.NombreRol,
+        email=new_user.Email,
+        role=role_name,
         permissions=permissions_list
     )
     
@@ -473,17 +510,15 @@ async def register(
         token_type="bearer",
         expires_in=JWT_EXPIRATION_SECONDS,
         user_id=new_user.IdUsuario,
-        role=user_role.NombreRol,
+        role=role_name,
         email=new_user.Email,
         nombre=new_user.Nombre,
         apellido=new_user.Apellido,
         permissions=permissions_list
     )
     
-    message = "Usuario registrado exitosamente"
-    
     return ResponseBase[TokenResponse](
-        message=message,
+        message="Usuario registrado exitosamente",
         data=token_response
     )
 

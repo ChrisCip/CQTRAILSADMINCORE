@@ -49,6 +49,12 @@ class RegisterRequest(BaseModel):
         max_length=30,
         example="Pérez"
     )
+    idRol: Optional[int] = Field(
+        None, 
+        description="ID del rol a asignar (2=Admin, 3=Empleado). Si no se proporciona, se asigna rol de Usuario.",
+        example=3,
+        ge=1
+    )
     
     @validator('confirm_password')
     def passwords_match(cls, v, values, **kwargs):
@@ -64,7 +70,8 @@ class RegisterRequest(BaseModel):
                 "password": "contraseña123",
                 "confirm_password": "contraseña123",
                 "nombre": "Juan",
-                "apellido": "Pérez"
+                "apellido": "Pérez",
+                "idRol": 3
             }
         }
     }
