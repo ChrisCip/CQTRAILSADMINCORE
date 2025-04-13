@@ -52,9 +52,20 @@ HTTP_METHOD_TO_PERMISSION = {
     'DELETE': 'Eliminar'   # Eliminar -> booleano en la BD
 }
 
-# Cache de permisos para evitar consultas repetidas
-# Formato: {"rol_nombre": {"controlador": {"Leer": bool, "Crear": bool, ...}}}
-PERMISOS_CACHE: Dict[str, Dict[str, Dict[str, bool]]] = {}
+# Configuración de uso de caché a través de variable de entorno (por defecto desactivado)
+USE_PERMISSIONS_CACHE = os.getenv("USE_PERMISSIONS_CACHE", "false").lower() == "true"
+
+# Tiempo de expiración de caché en segundos (5 minutos)
+CACHE_EXPIRY_TIME = int(os.getenv("CACHE_EXPIRY_TIME", "300"))
+
+# Cache de permisos para evitar consultas repetidas (solo si está habilitado)
+# Formato: {"rol_nombre:controlador:permiso": {"value": bool, "timestamp": float}}
+permission_cache: Dict[str, Dict[str, Any]] = {}
+
+if USE_PERMISSIONS_CACHE:
+    logger.info(f"Permissions cache ENABLED with {CACHE_EXPIRY_TIME}s expiry time")
+else:
+    logger.info("Permissions cache DISABLED - DB will always be queried")
 
 # Lista de rutas públicas que no requieren autenticación
 PUBLIC_PATHS = [
@@ -68,8 +79,10 @@ PUBLIC_PATHS = [
     r"^/favicon.ico$",
 ]
 
-# Cache for permissions to reduce database queries
-permission_cache: Dict[Tuple[str, str], bool] = {}
+def clear_permissions_cache():
+    """Limpiar el caché de permisos"""
+    permission_cache.clear()
+    logger.info("Permission cache cleared")
 
 class RolesPermisosMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
@@ -83,11 +96,11 @@ class RolesPermisosMiddleware(BaseHTTPMiddleware):
         logger.info(f"Processing request: {request.method} {request.url.path}")
         
         # Allow public paths without authentication
-        public_paths = ["/auth/login", "/auth/register", "/docs", "/redoc", "/openapi.json"]
-        if request.url.path in public_paths or request.url.path.startswith("/static/"):
-            logger.info(f"Public path detected: {request.url.path} - allowing without authentication")
-            response = await call_next(request)
-            return response
+        for pattern in PUBLIC_PATHS:
+            if re.match(pattern, request.url.path):
+                logger.info(f"Public path detected: {request.url.path} - allowing without authentication")
+                response = await call_next(request)
+                return response
             
         # Allow OPTIONS requests (for CORS preflight)
         if request.method == "OPTIONS":
@@ -136,195 +149,219 @@ class RolesPermisosMiddleware(BaseHTTPMiddleware):
         else:
             controller = ""
             
-        # Skip permission check for auth controller and if no controller in path
-        if controller == "auth" or not controller:
-            logger.info(f"Skipping permission check for '{controller}' controller")
+        # Skip permission check for auth controller
+        if controller == "auth":
+            logger.info(f"Skipping permission check for 'auth' controller")
             response = await call_next(request)
             return response
+            
+        # If controller is empty, deny access to non-Admin users
+        if not controller:
+            if user.role == "Admin":  # Solo Admin, no 'admin' ni 'Administrador'
+                logger.info(f"Admin role detected: granting access to root path")
+                response = await call_next(request)
+                return response
+            else:
+                logger.warning(f"Access denied for non-Admin role to root path")
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Acceso denegado a la ruta raíz"}
+                )
         
-        # Check permission based on role and controller
-        # Admin role has access to everything
-        is_admin = user.role == "Admin" or user.role == "Administrador" or user.role == "administrador"
-        
-        if is_admin:
-            logger.info(f"Admin user detected ({user.role}): granting access")
-            response = await call_next(request)
-            return response
-        
-        # Map HTTP method to permission type
-        method_to_permission = {
-            "GET": "Read",
-            "POST": "Create", 
-            "PUT": "Edit",
-            "PATCH": "Edit",
-            "DELETE": "Delete"
-        }
-        
-        permission_type = method_to_permission.get(request.method)
-        if not permission_type:
+        # Get HTTP method and map to permission type
+        permission_name = HTTP_METHOD_TO_PERMISSION.get(request.method)
+        if not permission_name:
             logger.warning(f"Unsupported HTTP method: {request.method}")
             return JSONResponse(
                 status_code=405,
                 content={"detail": f"Método HTTP no soportado: {request.method}"}
             )
         
+        # Check if user is Admin - only exact "Admin" role has special privileges
+        if user.role == "Admin":
+            logger.info(f"Admin role detected: granting access")
+            response = await call_next(request)
+            return response
+        
         # Check if user has permission
-        has_permission = await self.check_permission(user.role, controller, permission_type)
+        has_permission = await self.check_permission(user.role, controller, permission_name)
         
         if has_permission:
-            logger.info(f"Permission granted for {user.role} to {permission_type} on {controller}")
+            logger.info(f"Permission granted for {user.role} to {permission_name} on {controller}")
             response = await call_next(request)
             process_time = time.time() - start_time
             response.headers["X-Process-Time"] = str(process_time)
             return response
         else:
-            logger.warning(f"Permission denied for {user.role} to {permission_type} on {controller}")
+            logger.warning(f"Permission denied for {user.role} to {permission_name} on {controller}")
             return JSONResponse(
                 status_code=403,
                 content={
-                    "detail": f"Acceso denegado. No tiene permiso para {permission_type} en {controller}"
+                    "detail": f"Acceso denegado. No tiene permiso para {permission_name} en {controller}"
                 }
             )
     
-    async def check_permission(self, role: str, controller: str, permission_type: str) -> bool:
+    def _get_controller_variants(self, controller: str) -> List[str]:
+        """
+        Generate possible controller name variants (singular/plural)
+        """
+        variants = [controller.lower()]
+        
+        # Handle Spanish pluralization rules (simplified)
+        if controller.lower().endswith('es'):
+            # posible singular: remove 'es'
+            variants.append(controller.lower()[:-2])
+        elif controller.lower().endswith('s'):
+            # posible singular: remove 's'
+            variants.append(controller.lower()[:-1])
+        else:
+            # posible plural: add 's'
+            variants.append(f"{controller.lower()}s")
+            # posible plural: add 'es'
+            variants.append(f"{controller.lower()}es")
+            
+        logger.info(f"Generated controller variants for '{controller}': {variants}")
+        return variants
+    
+    async def check_permission(self, role: str, controller: str, permission_name: str) -> bool:
         """
         Check if a role has permission for a specific controller and action
         
         Args:
             role: Role name (e.g. "Admin", "Empleado")
             controller: Controller name (e.g. "ciudades")
-            permission_type: Permission type (Create, Read, Edit, Delete)
+            permission_name: Permission name from database (Crear, Leer, Editar, Eliminar)
             
         Returns:
             bool: True if permission granted, False otherwise
         """
-        # Normalize controller name to handle singular/plural variants
+        # Normalize role name to lowercase for case-insensitive comparison
+        role_lower = role.lower()
+        
+        # Generate controller variants to handle singular/plural forms
         controller_variants = self._get_controller_variants(controller)
         
-        # Log the controller name and its variants
-        logger.info(f"Checking permission for role={role}, controller={controller} (variants={controller_variants}), permission={permission_type}")
+        logger.info(f"Checking permission for role={role}, controller={controller} (variants={controller_variants}), permission={permission_name}")
         
-        # Map permission type to database column names
-        db_permission_columns = {
-            "Create": "Crear",
-            "Read": "Leer",
-            "Edit": "Editar",
-            "Delete": "Eliminar"
-        }
+        # Check cache only if enabled
+        cache_key = f"{role_lower}:{controller.lower()}:{permission_name}"
+        current_time = time.time()
         
-        db_permission_column = db_permission_columns.get(permission_type)
-        if not db_permission_column:
-            logger.error(f"Unknown permission type: {permission_type}")
-            return False
+        if USE_PERMISSIONS_CACHE and cache_key in permission_cache:
+            cache_entry = permission_cache[cache_key]
+            # Verificar si el cache ha expirado
+            if current_time - cache_entry.get("timestamp", 0) < CACHE_EXPIRY_TIME:
+                has_permission = cache_entry["value"]
+                logger.info(f"Permission cache hit for '{cache_key}': {has_permission}")
+                return has_permission
+            else:
+                logger.info(f"Permission cache expired for '{cache_key}', refreshing from database")
         
-        # Check cache first
-        cache_key = (role, f"{controller}:{permission_type}")
-        if cache_key in permission_cache:
-            logger.info(f"Permission cache hit for {cache_key}: {permission_cache[cache_key]}")
-            return permission_cache[cache_key]
-        
-        # Query database for permission
+        # Query database for permission - always fetch fresh data
         try:
             with SessionLocal() as db:
-                # Use a CTE (Common Table Expression) to make the query more efficient
-                query = text(f"""
-                    WITH role_data AS (
-                        SELECT "IdRol" FROM miguel."Roles" WHERE LOWER("NombreRol") = LOWER(:role)
-                    ),
-                    permission_data AS (
-                        SELECT "IdPermiso" FROM miguel."Permisos" 
-                        WHERE LOWER("NombrePermiso") IN :controller_variants
-                    )
-                    SELECT 
-                        r."IdRol", 
-                        p."IdPermiso", 
-                        rp."{db_permission_column}" as permission_value
-                    FROM miguel."RolesPermisos" rp
-                    JOIN role_data r ON rp."IdRol" = r."IdRol"
-                    JOIN permission_data p ON rp."IdPermiso" = p."IdPermiso"
-                """)
+                # Build SQL to check if role has permission for any variant of the controller
+                sql = """
+                SELECT p."NombrePermiso", rp."{permission}"
+                FROM miguel."RolesPermisos" rp
+                JOIN miguel."Roles" r ON rp."IdRol" = r."IdRol"
+                JOIN miguel."Permisos" p ON rp."IdPermiso" = p."IdPermiso"
+                WHERE LOWER(r."NombreRol") = :role_name
+                AND LOWER(p."NombrePermiso") IN :controller_variants
+                """.format(permission=permission_name)
                 
-                # Convert controller variants to lowercase for case-insensitive matching
-                lowercase_variants = [v.lower() for v in controller_variants]
+                # Log the actual SQL and parameters for debugging
+                logger.debug(f"SQL: {sql}")
+                logger.debug(f"Params: role_name={role_lower}, controller_variants={tuple(controller_variants)}")
                 
+                # Execute query with parameters
                 result = db.execute(
-                    query, 
-                    {"role": role, "controller_variants": tuple(lowercase_variants)}
+                    text(sql),
+                    {
+                        "role_name": role_lower,
+                        "controller_variants": tuple(controller_variants)
+                    }
                 ).fetchone()
                 
                 if result:
-                    # Check if the specific permission type is granted
-                    has_permission = bool(result["permission_value"])
-                    logger.info(f"Permission check result: role={role}, controller={controller}, {permission_type}={has_permission}")
+                    # Second column contains the boolean permission value
+                    has_permission = bool(result[1])
+                    controller_name = result[0]
                     
-                    # Update cache
-                    permission_cache[cache_key] = has_permission
+                    # Save result in cache only if enabled
+                    if USE_PERMISSIONS_CACHE:
+                        permission_cache[cache_key] = {
+                            "value": has_permission,
+                            "timestamp": current_time
+                        }
+                    
+                    if has_permission:
+                        logger.info(f"Permission granted for {role} to {permission_name} on {controller_name}")
+                    else:
+                        logger.warning(f"Permission denied for {role} to {permission_name} on {controller_name}")
+                    
                     return has_permission
                 else:
-                    logger.warning(f"No permission record found for role={role}, controller={controller}")
+                    # No permission record found - check deeper
+                    logger.warning(f"No permission found for role={role}, controller={controller_variants}")
                     
-                    # Check if role exists
-                    role_check = db.execute(
-                        text('SELECT "IdRol" FROM miguel."Roles" WHERE LOWER("NombreRol") = LOWER(:role)'),
-                        {"role": role}
+                    # Double-check role and permission existence for better diagnosis
+                    role_result = db.execute(
+                        text("SELECT \"IdRol\", \"NombreRol\" FROM miguel.\"Roles\" WHERE LOWER(\"NombreRol\") = :role_name"),
+                        {"role_name": role_lower}
                     ).fetchone()
                     
-                    if not role_check:
-                        logger.error(f"Role '{role}' not found in database")
+                    if role_result:
+                        logger.info(f"Role exists in database: ID={role_result[0]}, Name={role_result[1]}")
                         
-                    # Check if permission exists
-                    perm_check = db.execute(
-                        text('SELECT "IdPermiso", "NombrePermiso" FROM miguel."Permisos" WHERE LOWER("NombrePermiso") IN :controller_variants'),
-                        {"controller_variants": tuple(lowercase_variants)}
-                    ).fetchall()
-                    
-                    if not perm_check:
-                        logger.error(f"No permission found for controller variants: {controller_variants}")
+                        # Find permissions matching any controller variant
+                        perm_check = db.execute(
+                            text("""
+                            SELECT "IdPermiso", "NombrePermiso" 
+                            FROM miguel."Permisos" 
+                            WHERE LOWER("NombrePermiso") IN :controller_variants
+                            """),
+                            {"controller_variants": tuple(controller_variants)}
+                        ).fetchall()
+                        
+                        if perm_check:
+                            logger.info(f"Found permissions in database: {[p[1] for p in perm_check]}")
+                            
+                            # Check if role-permission association exists but is set to false
+                            for perm_id, perm_name in [(p[0], p[1]) for p in perm_check]:
+                                explicit_check = db.execute(
+                                    text(f"""
+                                    SELECT "{permission_name}" 
+                                    FROM miguel."RolesPermisos" 
+                                    WHERE "IdRol" = :role_id AND "IdPermiso" = :perm_id
+                                    """),
+                                    {"role_id": role_result[0], "perm_id": perm_id}
+                                ).fetchone()
+                                
+                                if explicit_check is not None:
+                                    logger.info(f"Found explicit permission setting for {role}:{perm_name}:{permission_name} = {explicit_check[0]}")
+                                    
+                                    # Save result in cache only if enabled
+                                    has_permission = bool(explicit_check[0])
+                                    if USE_PERMISSIONS_CACHE:
+                                        permission_cache[cache_key] = {
+                                            "value": has_permission,
+                                            "timestamp": current_time
+                                        }
+                                    return has_permission
                     else:
-                        logger.info(f"Found permissions: {perm_check}")
+                        logger.warning(f"Role '{role}' not found in database")
                     
-                    # Update cache with negative result
-                    permission_cache[cache_key] = False
+                    # Save negative result in cache only if enabled
+                    if USE_PERMISSIONS_CACHE:
+                        permission_cache[cache_key] = {
+                            "value": False,
+                            "timestamp": current_time
+                        }
+                    
                     return False
                     
         except Exception as e:
             logger.error(f"Error checking permission: {str(e)}")
             traceback.print_exc()
             return False
-    
-    def _get_controller_variants(self, controller: str) -> List[str]:
-        """
-        Generate possible variations of a controller name
-        
-        Args:
-            controller: Original controller name
-            
-        Returns:
-            List of possible controller name variations
-        """
-        variants = [controller]
-        
-        # Handle common singular/plural cases
-        if controller.endswith('es'):
-            # Spanish plural ending (e.g. "ciudades" -> "ciudad")
-            variants.append(controller[:-2])
-        elif controller.endswith('s'):
-            # English/Spanish plural ending (e.g. "usuarios" -> "usuario")
-            variants.append(controller[:-1])
-        elif controller.endswith('d'):
-            # For singular "ciudad" add "ciudades"
-            variants.append(controller + 'es')
-        else:
-            # Add simple plural form
-            variants.append(controller + 's')
-        
-        logger.info(f"Generated controller variants for '{controller}': {variants}")
-        return variants
-
-def clear_permissions_cache():
-    """Limpia la caché de permisos para forzar recarga desde DB"""
-    global PERMISOS_CACHE
-    old_size = len(PERMISOS_CACHE)
-    PERMISOS_CACHE = {}
-    logger.info(f"Caché de permisos limpiada. Tamaño anterior: {old_size} roles")
-    return {"status": "success", "message": f"Cache limpiada. {old_size} roles eliminados de la caché"}

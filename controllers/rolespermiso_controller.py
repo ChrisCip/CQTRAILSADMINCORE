@@ -51,7 +51,7 @@ def get_roles_permisos(
 ):
     """Lista todos los permisos de roles"""
     # Consulta SQL utilizando join
-    query = """
+    query = text("""
     SELECT 
         rp."IdRol", 
         rp."IdPermiso", 
@@ -70,7 +70,7 @@ def get_roles_permisos(
     ORDER BY 
         r."NombreRol", p."NombrePermiso"
     OFFSET :skip LIMIT :limit
-    """
+    """)
     
     result = db.execute(query, {"skip": skip, "limit": limit})
     
@@ -109,7 +109,7 @@ def get_permisos_by_rol(
         raise HTTPException(status_code=404, detail=f"Rol con ID {rol_id} no encontrado")
     
     # Consulta SQL utilizando join
-    query = """
+    query = text("""
     SELECT 
         rp."IdRol", 
         rp."IdPermiso", 
@@ -129,7 +129,7 @@ def get_permisos_by_rol(
         rp."IdRol" = :rol_id
     ORDER BY 
         p."NombrePermiso"
-    """
+    """)
     
     result = db.execute(query, {"rol_id": rol_id})
     
@@ -168,7 +168,7 @@ def get_permisos_by_nombre_rol(
         raise HTTPException(status_code=404, detail=f"Rol '{nombre_rol}' no encontrado")
     
     # Consulta SQL utilizando join
-    query = """
+    query = text("""
     SELECT 
         rp."IdRol", 
         rp."IdPermiso", 
@@ -188,7 +188,7 @@ def get_permisos_by_nombre_rol(
         r."NombreRol" = :nombre_rol
     ORDER BY 
         p."NombrePermiso"
-    """
+    """)
     
     result = db.execute(query, {"nombre_rol": nombre_rol})
     
@@ -233,14 +233,14 @@ def create_or_update_rol_permiso(
         raise HTTPException(status_code=404, detail=f"Permiso con ID {rol_permiso.IdPermiso} no encontrado")
     
     # Verificar si ya existe la combinación
-    existing_query = """
+    existing_query = text("""
     SELECT 
         EXISTS(
             SELECT 1 
             FROM miguel."RolesPermisos" 
             WHERE "IdRol" = :rol_id AND "IdPermiso" = :permiso_id
         )
-    """
+    """)
     exists = db.execute(existing_query, {
         "rol_id": rol_permiso.IdRol,
         "permiso_id": rol_permiso.IdPermiso
@@ -248,7 +248,7 @@ def create_or_update_rol_permiso(
     
     if exists:
         # Actualizar
-        update_query = """
+        update_query = text("""
         UPDATE miguel."RolesPermisos" 
         SET 
             "Crear" = :crear,
@@ -257,7 +257,7 @@ def create_or_update_rol_permiso(
             "Eliminar" = :eliminar
         WHERE 
             "IdRol" = :rol_id AND "IdPermiso" = :permiso_id
-        """
+        """)
         
         db.execute(update_query, {
             "crear": rol_permiso.Crear,
@@ -271,12 +271,12 @@ def create_or_update_rol_permiso(
         message = "Permiso de rol actualizado correctamente"
     else:
         # Insertar nuevo
-        insert_query = """
+        insert_query = text("""
         INSERT INTO miguel."RolesPermisos" 
             ("IdRol", "IdPermiso", "Crear", "Editar", "Leer", "Eliminar")
         VALUES 
             (:rol_id, :permiso_id, :crear, :editar, :leer, :eliminar)
-        """
+        """)
         
         db.execute(insert_query, {
             "rol_id": rol_permiso.IdRol,
@@ -312,14 +312,14 @@ def update_rol_permiso(
 ):
     """Actualiza un permiso de rol"""
     # Verificar si existe la combinación
-    existing_query = """
+    existing_query = text("""
     SELECT 
         "Crear", "Editar", "Leer", "Eliminar"
     FROM 
         miguel."RolesPermisos" 
     WHERE 
         "IdRol" = :rol_id AND "IdPermiso" = :permiso_id
-    """
+    """)
     
     existing = db.execute(existing_query, {
         "rol_id": rol_id,
@@ -352,7 +352,7 @@ def update_rol_permiso(
         update_values["Eliminar"] = existing[3]
     
     # Actualizar
-    update_query = """
+    update_query = text("""
     UPDATE miguel."RolesPermisos" 
     SET 
         "Crear" = :crear,
@@ -361,7 +361,7 @@ def update_rol_permiso(
         "Eliminar" = :eliminar
     WHERE 
         "IdRol" = :rol_id AND "IdPermiso" = :permiso_id
-    """
+    """)
     
     db.execute(update_query, {
         "crear": update_values["Crear"],
@@ -394,14 +394,14 @@ def delete_rol_permiso(
 ):
     """Elimina un permiso de rol"""
     # Verificar si existe la combinación
-    existing_query = """
+    existing_query = text("""
     SELECT 
         EXISTS(
             SELECT 1 
             FROM miguel."RolesPermisos" 
             WHERE "IdRol" = :rol_id AND "IdPermiso" = :permiso_id
         )
-    """
+    """)
     
     exists = db.execute(existing_query, {
         "rol_id": rol_id,
@@ -412,10 +412,10 @@ def delete_rol_permiso(
         raise HTTPException(status_code=404, detail="Permiso de rol no encontrado")
     
     # Eliminar
-    delete_query = """
+    delete_query = text("""
     DELETE FROM miguel."RolesPermisos" 
     WHERE "IdRol" = :rol_id AND "IdPermiso" = :permiso_id
-    """
+    """)
     
     db.execute(delete_query, {
         "rol_id": rol_id,
@@ -442,40 +442,40 @@ def diagnostico_permisos(
     """Realiza un diagnóstico del sistema de permisos"""
     try:
         # 1. Verificar todas las tablas
-        tablas_query = """
+        tablas_query = text("""
         SELECT table_name 
         FROM information_schema.tables
         WHERE table_schema = 'miguel'
         ORDER BY table_name
-        """
-        tablas = db.execute(text(tablas_query)).fetchall()
+        """)
+        tablas = db.execute(tablas_query).fetchall()
         
         # 2. Verificar roles
-        roles_query = """
+        roles_query = text("""
         SELECT "IdRol", "NombreRol", "Descripcion"
         FROM miguel."Roles"
         ORDER BY "IdRol"
-        """
-        roles = db.execute(text(roles_query)).fetchall()
+        """)
+        roles = db.execute(roles_query).fetchall()
         
         # 3. Verificar permisos
-        permisos_query = """
+        permisos_query = text("""
         SELECT "IdPermiso", "NombrePermiso", "Descripcion"
         FROM miguel."Permisos"
         ORDER BY "IdPermiso"
-        """
-        permisos = db.execute(text(permisos_query)).fetchall()
+        """)
+        permisos = db.execute(permisos_query).fetchall()
         
         # 4. Verificar roles permisos
-        roles_permisos_query = """
+        roles_permisos_query = text("""
         SELECT rp."IdRol", r."NombreRol", rp."IdPermiso", p."NombrePermiso", 
                rp."Crear", rp."Editar", rp."Leer", rp."Eliminar"
         FROM miguel."RolesPermisos" rp
         JOIN miguel."Roles" r ON rp."IdRol" = r."IdRol"
         JOIN miguel."Permisos" p ON rp."IdPermiso" = p."IdPermiso"
         ORDER BY r."NombreRol", p."NombrePermiso"
-        """
-        roles_permisos = db.execute(text(roles_permisos_query)).fetchall()
+        """)
+        roles_permisos = db.execute(roles_permisos_query).fetchall()
         
         # Formatear los resultados
         results = {
@@ -537,4 +537,71 @@ def diagnostico_permisos(
         return ResponseBase(
             success=False,
             message=f"Error en diagnóstico: {str(e)}"
-        ) 
+        )
+
+@router.get(
+    "/limpiar-cache", 
+    response_model=ResponseBase,
+    summary="Limpiar caché de permisos",
+    description="Limpia el caché de permisos para forzar la recarga desde la base de datos."
+)
+def limpiar_cache_permisos(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Limpia el caché de permisos para forzar recarga desde DB"""
+    # Verificar que el usuario sea Admin
+    if current_user.role != "Admin":
+        raise HTTPException(
+            status_code=403, 
+            detail="Solo los administradores pueden limpiar el caché"
+        )
+        
+    # Limpiar el caché
+    clear_permissions_cache()
+    
+    return ResponseBase(
+        success=True,
+        message="Caché de permisos limpiada correctamente"
+    )
+
+@router.get(
+    "/limpiar-cache/{role}/{controller}", 
+    response_model=ResponseBase,
+    summary="Limpiar caché para un rol y controlador específicos",
+    description="Limpia la caché de permisos para un rol y controlador específicos, forzando la recarga desde la base de datos."
+)
+def limpiar_cache_especifico(
+    role: str,
+    controller: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Limpia el caché de permisos para un rol y controlador específicos"""
+    # Verificar que el usuario sea Admin
+    if current_user.role != "Admin":
+        raise HTTPException(
+            status_code=403, 
+            detail="Solo los administradores pueden limpiar el caché"
+        )
+    
+    # Normalizar rol y controlador a minúsculas para buscar en la caché
+    role_lower = role.lower()
+    controller_lower = controller.lower()
+    
+    # Obtener claves del caché que coincidan con el patrón
+    from rolespermisosmiddleware.middleware import permission_cache
+    
+    cache_keys = list(permission_cache.keys())
+    removed_keys = []
+    
+    for key in cache_keys:
+        if key.startswith(f"{role_lower}:{controller_lower}:"):
+            removed_keys.append(key)
+            del permission_cache[key]
+            
+    return ResponseBase(
+        success=True,
+        message=f"Caché limpiada para rol '{role}' y controlador '{controller}'",
+        data={"keys_removed": removed_keys}
+    ) 
