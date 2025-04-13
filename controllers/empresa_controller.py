@@ -6,7 +6,7 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Empresas
 from schemas.empresa_schema import EmpresaCreate, EmpresaUpdate, EmpresaResponse
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -54,7 +54,7 @@ def get_empresa(
 def create_empresa(
     empresa: EmpresaCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """Create a new company"""
     db_empresa = Empresas(**empresa.model_dump())
@@ -71,7 +71,7 @@ def update_empresa(
     empresa_id: int, 
     empresa: EmpresaUpdate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """Update a company"""
     db_empresa = db.query(Empresas).filter(Empresas.IdEmpresa == empresa_id).first()
@@ -93,7 +93,7 @@ def update_empresa(
 def delete_empresa(
     empresa_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+    current_user = Depends(get_current_user)
 ):
     """Delete a company"""
     db_empresa = db.query(Empresas).filter(Empresas.IdEmpresa == empresa_id).first()

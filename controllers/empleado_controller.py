@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -6,7 +6,7 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Empleados, Empresas, Usuarios
 from schemas.empleado_schema import EmpleadoCreate, EmpleadoUpdate, EmpleadoResponse, EmpleadoDetailResponse
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -55,7 +55,7 @@ def get_empleado(
 def create_empleado(
     empleado: EmpleadoCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)  # Usar solo get_current_user
 ):
     """Create a new employee"""
     # Check if company exists
@@ -84,10 +84,10 @@ def create_empleado(
 
 @router.put("/{empleado_id}", response_model=ResponseBase[EmpleadoResponse])
 def update_empleado(
-    empleado_id: int, 
-    empleado: EmpleadoUpdate, 
+    empleado_id: int = Path(..., description="ID único del empleado a actualizar", ge=1),
+    empleado: EmpleadoUpdate = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)  # Usar solo get_current_user
 ):
     """Update an employee"""
     db_empleado = db.query(Empleados).filter(Empleados.IdEmpleado == empleado_id).first()
@@ -125,9 +125,9 @@ def update_empleado(
 
 @router.delete("/{empleado_id}", response_model=ResponseBase)
 def delete_empleado(
-    empleado_id: int, 
+    empleado_id: int = Path(..., description="ID único del empleado a eliminar", ge=1),
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+    current_user = Depends(get_current_user)  # Usar solo get_current_user
 ):
     """Delete an employee"""
     db_empleado = db.query(Empleados).filter(Empleados.IdEmpleado == empleado_id).first()

@@ -6,7 +6,7 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import VehiculosReservaciones, Vehiculos, Reservaciones
 from schemas.vehiculoreservacion_schema import VehiculoReservacionCreate, VehiculoReservacionUpdate, VehiculoReservacionResponse, VehiculoReservacionDetailResponse
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -74,7 +74,7 @@ def get_vehiculo_reservacion(
 def create_vehiculo_reservacion(
     vehiculo_reservacion: VehiculoReservacionCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Protección JWT con roles específicos
+    current_user = Depends(get_current_user)
 ):
     """Create a new vehicle-reservation assignment"""
     # Check if vehicle exists and is available
@@ -131,7 +131,7 @@ def update_vehiculo_reservacion(
     id_reservacion: int, 
     vehiculo_reservacion: VehiculoReservacionUpdate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Protección JWT con roles específicos
+    current_user = Depends(get_current_user)
 ):
     """Update a vehicle-reservation assignment"""
     db_vehiculo_reservacion = db.query(VehiculosReservaciones).filter(
@@ -158,7 +158,7 @@ def delete_vehiculo_reservacion(
     id_vehiculo: int, 
     id_reservacion: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador"]))  # Solo administradores pueden eliminar
+    current_user = Depends(get_current_user)
 ):
     """Delete a vehicle-reservation assignment"""
     db_vehiculo_reservacion = db.query(VehiculosReservaciones).filter(

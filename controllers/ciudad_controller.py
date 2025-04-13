@@ -46,8 +46,14 @@ def get_ciudades(
     Returns:
         List[CiudadResponse]: Lista de ciudades
     """
+    # Mostrar información del usuario para depuración
+    print(f"Usuario autenticado en endpoint de ciudades: {current_user.email}, rol: {current_user.role}")
+    
     ciudades = db.query(Ciudades).offset(skip).limit(limit).all()
-    return ResponseBase[List[CiudadResponse]](data=ciudades)
+    return ResponseBase[List[CiudadResponse]](
+        data=ciudades,
+        message="Ciudades recuperadas exitosamente"
+    )
 
 @router.get("/{ciudad_id}", response_model=ResponseBase[CiudadResponse])
 def get_ciudad(
@@ -77,7 +83,7 @@ def get_ciudad(
 def create_ciudad(
     ciudad: CiudadCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador"]))  # Añadir protección JWT con rol admin
+    current_user = Depends(get_current_user)  # Quitamos la restricción de rol
 ):
     """
     Crear una nueva ciudad en el sistema.
@@ -103,7 +109,7 @@ def update_ciudad(
     ciudad_id: int = Path(..., description="ID único de la ciudad a actualizar", ge=1),
     ciudad: CiudadUpdate = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador"]))  # Añadir protección JWT con rol admin
+    current_user = Depends(get_current_user)  # Quitamos la restricción de rol
 ):
     """
     Actualizar información de una ciudad existente.
@@ -139,7 +145,7 @@ def update_ciudad(
 def delete_ciudad(
     ciudad_id: int = Path(..., description="ID único de la ciudad a eliminar", ge=1),
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+    current_user = Depends(get_current_user)  # Quitamos la restricción de rol
 ):
     """
     Eliminar una ciudad del sistema.

@@ -4,9 +4,9 @@ from typing import List, Optional
 
 from dbcontext.mydb import SessionLocal
 from dbcontext.models import Vehiculos
-from schemas.vehiculo_schema import VehiculoCreate, VehiculoUpdate, VehiculoResponse
+from schemas.vehiculo_schema import VehiculoCreate, VehiculoUpdate, VehiculoResponse, VehiculoDisponibilidad
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -33,7 +33,7 @@ def get_vehiculos(
     limit: int = 100, 
     disponible: Optional[bool] = None,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)  # Añadir protección JWT
+    current_user = Depends(get_current_user)
 ):
     """Get all vehicles with optional filter by availability"""
     query = db.query(Vehiculos)
@@ -48,7 +48,7 @@ def get_vehiculos(
 def get_vehiculo(
     vehiculo_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)  # Añadir protección JWT
+    current_user = Depends(get_current_user)
 ):
     """Get a vehicle by ID"""
     vehiculo = db.query(Vehiculos).filter(Vehiculos.IdVehiculo == vehiculo_id).first()
@@ -60,7 +60,7 @@ def get_vehiculo(
 def create_vehiculo(
     vehiculo: VehiculoCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """Create a new vehicle"""
     # Check if license plate already exists
@@ -82,7 +82,7 @@ def update_vehiculo(
     vehiculo_id: int, 
     vehiculo: VehiculoUpdate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """Update a vehicle"""
     db_vehiculo = db.query(Vehiculos).filter(Vehiculos.IdVehiculo == vehiculo_id).first()
@@ -110,7 +110,7 @@ def update_vehiculo(
 def delete_vehiculo(
     vehiculo_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+    current_user = Depends(get_current_user)
 ):
     """Delete a vehicle"""
     db_vehiculo = db.query(Vehiculos).filter(Vehiculos.IdVehiculo == vehiculo_id).first()
@@ -122,18 +122,18 @@ def delete_vehiculo(
     return ResponseBase(message="Vehículo eliminado exitosamente")
 
 @router.patch("/{vehiculo_id}/disponibilidad", response_model=ResponseBase[VehiculoResponse])
-def actualizar_disponibilidad(
+def update_disponibilidad(
     vehiculo_id: int, 
-    disponible: bool = Query(..., description="Nuevo estado de disponibilidad"), 
+    disponibilidad: VehiculoDisponibilidad, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """Update vehicle availability"""
     db_vehiculo = db.query(Vehiculos).filter(Vehiculos.IdVehiculo == vehiculo_id).first()
     if db_vehiculo is None:
         raise HTTPException(status_code=404, detail="Vehículo no encontrado")
     
-    db_vehiculo.Disponible = disponible
+    db_vehiculo.Disponible = disponibilidad.disponible
     db.commit()
     db.refresh(db_vehiculo)
     return ResponseBase[VehiculoResponse](

@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status, Security
+from fastapi import Depends, HTTPException, status, Security, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import os
@@ -37,7 +37,8 @@ def get_db():
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Security(security),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None
 ) -> UserAuthInfo:
     """
     Authenticate and get current user from JWT token
@@ -46,6 +47,7 @@ async def get_current_user(
     All protected endpoints should depend on this.
     """
     if not credentials:
+        print("No se proporcionó token de autenticación")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No se proporcionó token de autenticación",
@@ -54,7 +56,9 @@ async def get_current_user(
         
     try:
         # Extract and verify token
+        print(f"Decodificando token: {credentials.credentials[:20]}...")
         payload = decode_token(credentials.credentials)
+        print(f"Token decodificado correctamente para usuario: {payload.get('email')}")
         
         # Check if user still exists and is active
         user_id = payload.get("user_id")
@@ -64,6 +68,7 @@ async def get_current_user(
         ).first()
         
         if not user:
+            print(f"Usuario inactivo o no encontrado: {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Usuario inactivo o no encontrado",
@@ -78,9 +83,17 @@ async def get_current_user(
             permissions=payload.get("permissions", [])
         )
         
+        # Store user info in request state for middleware
+        if request:
+            print(f"Guardando información del usuario en request.state: {user_info.email}, rol: {user_info.role}")
+            request.state.user = user_info
+        else:
+            print("ADVERTENCIA: request es None, no se puede guardar la información del usuario")
+        
         return user_info
     except Exception as e:
         # Usar Exception genérica en lugar de PyJWT específico para evitar errores de importación
+        print(f"Error al decodificar token: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token inválido: {str(e)}",

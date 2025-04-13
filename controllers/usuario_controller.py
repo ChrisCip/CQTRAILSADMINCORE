@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import bcrypt
+from pydantic import EmailStr
 
 from dbcontext.mydb import SessionLocal
 from dbcontext.models import Usuarios, Roles
-from schemas.usuario_schema import UsuarioCreate, UsuarioUpdate, UsuarioResponse, UsuarioDetailResponse
+from schemas.usuario_schema import UsuarioCreate, UsuarioUpdate, UsuarioResponse, UsuarioDetailResponse, UsuarioCambioRol, UsuarioActivacion, UsuarioCambioPassword
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_role, require_admin, require_permission
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -42,10 +43,11 @@ def hash_password(password: str) -> str:
     description="Obtiene una lista de todos los usuarios registrados en el sistema."
 )
 def get_usuarios(
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = Query(0, description="Número de registros a omitir", ge=0),
+    limit: int = Query(100, description="Número máximo de registros a retornar", le=100),
+    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))
+    current_user = Depends(get_current_user)
 ):
     """Lista todos los usuarios (requiere rol Administrador o Gerente)"""
     usuarios = db.query(Usuarios).offset(skip).limit(limit).all()
@@ -89,12 +91,12 @@ def get_usuario(
     response_model=ResponseBase[UsuarioResponse], 
     status_code=status.HTTP_201_CREATED,
     summary="Crear nuevo usuario",
-    description="Crea un nuevo usuario en el sistema (solo administradores)."
+    description="Crea un nuevo usuario en el sistema."
 )
 def create_usuario(
     usuario: UsuarioCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can create users
+    current_user = Depends(get_current_user)
 ):
     """Crea un nuevo usuario (solo administradores)"""
     # Check if role exists
@@ -192,12 +194,12 @@ def update_usuario(
     "/{usuario_id}", 
     response_model=ResponseBase,
     summary="Eliminar usuario",
-    description="Elimina un usuario del sistema (solo administradores)."
+    description="Elimina un usuario del sistema."
 )
 def delete_usuario(
-    usuario_id: int, 
+    usuario_id: int = Path(..., description="ID único del usuario a eliminar", ge=1),
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can delete users
+    current_user = Depends(get_current_user)
 ):
     """Elimina un usuario (solo administradores)"""
     # Check if user exists
@@ -220,16 +222,16 @@ def delete_usuario(
 
 # Admin endpoint to change user's role
 @router.put(
-    "/{usuario_id}/rol/{rol_id}", 
+    "/{usuario_id}/rol", 
     response_model=ResponseBase[UsuarioResponse],
     summary="Cambiar rol de usuario",
-    description="Asigna un nuevo rol a un usuario existente (solo administradores)."
+    description="Actualiza el rol asignado a un usuario."
 )
 def update_usuario_rol(
-    usuario_id: int, 
-    rol_id: int,
+    usuario_id: int = Path(..., description="ID único del usuario a modificar", ge=1),
+    cambio_rol: UsuarioCambioRol = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can change roles
+    current_user = Depends(get_current_user)
 ):
     """Cambia el rol de un usuario (solo administradores)"""
     # Check if user exists
@@ -238,12 +240,12 @@ def update_usuario_rol(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     # Check if role exists
-    db_rol = db.query(Roles).filter(Roles.IdRol == rol_id).first()
+    db_rol = db.query(Roles).filter(Roles.IdRol == cambio_rol.IdRol).first()
     if db_rol is None:
-        raise HTTPException(status_code=404, detail=f"Rol con ID {rol_id} no encontrado")
+        raise HTTPException(status_code=404, detail=f"Rol con ID {cambio_rol.IdRol} no encontrado")
     
     # Update role
-    db_usuario.IdRol = rol_id
+    db_usuario.IdRol = cambio_rol.IdRol
     db.commit()
     db.refresh(db_usuario)
     
@@ -257,12 +259,13 @@ def update_usuario_rol(
     "/{usuario_id}/activar", 
     response_model=ResponseBase[UsuarioResponse],
     summary="Activar usuario",
-    description="Activa una cuenta de usuario (solo administradores)."
+    description="Activa un usuario desactivado."
 )
 def activar_usuario(
-    usuario_id: int,
+    usuario_id: int = Path(..., description="ID único del usuario a activar", ge=1),
+    activacion: UsuarioActivacion = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can activate/deactivate
+    current_user = Depends(get_current_user)
 ):
     """Activa una cuenta de usuario (solo administradores)"""
     db_usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == usuario_id).first()
@@ -287,7 +290,7 @@ def activar_usuario(
 def desactivar_usuario(
     usuario_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can activate/deactivate
+    current_user = Depends(get_current_user)
 ):
     """Desactiva una cuenta de usuario (solo administradores)"""
     db_usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == usuario_id).first()
@@ -309,3 +312,40 @@ def desactivar_usuario(
         message="Usuario desactivado exitosamente", 
         data=db_usuario
     )
+
+@router.patch(
+    "/{usuario_id}/password", 
+    response_model=ResponseBase,
+    summary="Cambiar contraseña",
+    description="Cambia la contraseña de un usuario (solo el propio usuario o un administrador pueden hacerlo)."
+)
+def cambiar_password(
+    usuario_id: int = Path(..., description="ID único del usuario", ge=1),
+    cambio_password: UsuarioCambioPassword = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Cambia la contraseña de un usuario"""
+    # Verificar que el usuario existe
+    db_usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == usuario_id).first()
+    if db_usuario is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Solo el propio usuario o un admin pueden cambiar la contraseña
+    if current_user.user_id != usuario_id and current_user.role != "Admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="No tienes permiso para cambiar la contraseña de otro usuario"
+        )
+    
+    # Generar hash de la nueva contraseña
+    hashed_password = bcrypt.hashpw(
+        cambio_password.nueva_password.encode('utf-8'), 
+        bcrypt.gensalt()
+    ).decode('utf-8')
+    
+    # Actualizar contraseña
+    db_usuario.Password = hashed_password
+    db.commit()
+    
+    return ResponseBase(message="Contraseña actualizada exitosamente")

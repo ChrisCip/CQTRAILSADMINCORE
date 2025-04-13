@@ -59,3 +59,10 @@ coverage.xml
 
 # Project specific
 # Add custom ignore patterns here
+.txt
+.md
+.pdf
+.docx
+.doc
+.xls
+.xlsx

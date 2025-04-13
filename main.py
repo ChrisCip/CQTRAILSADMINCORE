@@ -21,8 +21,14 @@ from controllers import (
     reservacion_controller,
     notificacion_controller,
     prefactura_controller,
-    vehiculoreservacion_controller
+    vehiculoreservacion_controller,
+    rolespermiso_controller
 )
+
+# Import the roles permissions middleware
+from rolespermisosmiddleware import RolesPermisosMiddleware
+from dependencies.auth import decode_token, UserAuthInfo
+from dbcontext.models import Usuarios
 
 # Function to generate unique operation IDs
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -137,6 +143,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add Roles Permissions middleware for permission checking
+app.add_middleware(RolesPermisosMiddleware)
+
 # Dependency to get DB session
 def get_db():
     db = SessionLocal()
@@ -171,6 +180,7 @@ app.include_router(reservacion_controller.router)
 app.include_router(notificacion_controller.router)
 app.include_router(prefactura_controller.router)
 app.include_router(vehiculoreservacion_controller.router)
+app.include_router(rolespermiso_controller.router)
 
 # Update the custom_openapi function
 

@@ -73,6 +73,12 @@ class ReservacionRejection(BaseModel):
     MotivoRechazo: str = Field(..., description="Motivo por el cual se rechaza la reservación", 
                               example="No hay vehículos disponibles para las fechas solicitadas")
 
+class ReservacionAprobacionDenegacion(BaseModel):
+    """Modelo unificado para aprobar o denegar una reservación"""
+    IdUsuarioModificacion: int = Field(..., description="ID del usuario que procesa la reservación")
+    MotivoRechazo: Optional[str] = Field(None, description="Motivo del rechazo (solo para denegación)")
+    Comentario: Optional[str] = Field(None, description="Comentario adicional")
+
 # Response models with relationships but avoiding deep nesting
 class ReservacionResponse(BaseModel):
     IdReservacion: int

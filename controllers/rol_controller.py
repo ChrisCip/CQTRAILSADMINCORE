@@ -6,7 +6,7 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Roles, Permisos, Usuarios
 from schemas.rol_schema import RolCreate, RolUpdate, RolResponse, RolDetailResponse
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_role, require_admin
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -38,9 +38,9 @@ def get_roles(
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))
+    current_user = Depends(get_current_user)
 ):
-    """Lista todos los roles (requiere Administrador o Gerente)"""
+    """Lista todos los roles"""
     roles = db.query(Roles).offset(skip).limit(limit).all()
     return ResponseBase[List[RolResponse]](data=roles)
 
@@ -54,9 +54,9 @@ def get_roles(
 def get_rol(
     rol_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))
+    current_user = Depends(get_current_user)
 ):
-    """Obtiene detalles de un rol específico (requiere Administrador o Gerente)"""
+    """Obtiene detalles de un rol específico"""
     rol = db.query(Roles).filter(Roles.IdRol == rol_id).first()
     if rol is None:
         raise HTTPException(status_code=404, detail="Rol no encontrado")
@@ -68,14 +68,14 @@ def get_rol(
     response_model=ResponseBase[RolResponse], 
     status_code=status.HTTP_201_CREATED,
     summary="Crear nuevo rol",
-    description="Crea un nuevo rol en el sistema (solo administradores)."
+    description="Crea un nuevo rol en el sistema."
 )
 def create_rol(
     rol: RolCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can create roles
+    current_user = Depends(get_current_user)
 ):
-    """Crea un nuevo rol (solo administradores)"""
+    """Crea un nuevo rol"""
     # Check if role name already exists
     existing_role = db.query(Roles).filter(Roles.NombreRol == rol.NombreRol).first()
     if existing_role:
@@ -99,15 +99,15 @@ def create_rol(
     "/{rol_id}", 
     response_model=ResponseBase[RolResponse],
     summary="Actualizar rol",
-    description="Actualiza información de un rol existente (solo administradores)."
+    description="Actualiza información de un rol existente."
 )
 def update_rol(
     rol_id: int, 
     rol: RolUpdate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can update roles
+    current_user = Depends(get_current_user)
 ):
-    """Actualiza un rol (solo administradores)"""
+    """Actualiza un rol"""
     db_rol = db.query(Roles).filter(Roles.IdRol == rol_id).first()
     if db_rol is None:
         raise HTTPException(status_code=404, detail="Rol no encontrado")
@@ -137,14 +137,14 @@ def update_rol(
     "/{rol_id}", 
     response_model=ResponseBase,
     summary="Eliminar rol",
-    description="Elimina un rol del sistema (solo administradores)."
+    description="Elimina un rol del sistema."
 )
 def delete_rol(
     rol_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can delete roles
+    current_user = Depends(get_current_user)
 ):
-    """Elimina un rol (solo administradores)"""
+    """Elimina un rol"""
     db_rol = db.query(Roles).filter(Roles.IdRol == rol_id).first()
     if db_rol is None:
         raise HTTPException(status_code=404, detail="Rol no encontrado")
@@ -174,15 +174,15 @@ def delete_rol(
     "/{rol_id}/permisos/{permiso_id}", 
     response_model=ResponseBase,
     summary="Agregar permiso a rol",
-    description="Asigna un permiso a un rol existente (solo administradores)."
+    description="Asigna un permiso a un rol existente."
 )
 def add_permiso_to_rol(
     rol_id: int, 
     permiso_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can manage permissions
+    current_user = Depends(get_current_user)
 ):
-    """Agrega un permiso a un rol (solo administradores)"""
+    """Agrega un permiso a un rol"""
     db_rol = db.query(Roles).filter(Roles.IdRol == rol_id).first()
     if db_rol is None:
         raise HTTPException(status_code=404, detail="Rol no encontrado")
@@ -207,15 +207,15 @@ def add_permiso_to_rol(
     "/{rol_id}/permisos/{permiso_id}", 
     response_model=ResponseBase,
     summary="Eliminar permiso de rol",
-    description="Elimina un permiso de un rol existente (solo administradores)."
+    description="Elimina un permiso de un rol existente."
 )
 def remove_permiso_from_rol(
     rol_id: int, 
     permiso_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Only admin can manage permissions
+    current_user = Depends(get_current_user)
 ):
-    """Elimina un permiso de un rol (solo administradores)"""
+    """Elimina un permiso de un rol"""
     db_rol = db.query(Roles).filter(Roles.IdRol == rol_id).first()
     if db_rol is None:
         raise HTTPException(status_code=404, detail="Rol no encontrado")

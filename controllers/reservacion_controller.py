@@ -1,17 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 
 # Import necessary models and schemas
 from dbcontext.mydb import SessionLocal
 from dbcontext.models import Reservaciones, Usuarios, Empleados, Empresas, Roles
 from schemas.reservacion_schema import (
     ReservacionCreate, ReservacionUpdate, ReservacionResponse, ReservacionDetailResponse,
-    ReservacionApproval, ReservacionRejection
+    ReservacionApproval, ReservacionRejection, ReservacionAprobacionDenegacion
 )
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -262,10 +262,10 @@ def update_reservacion(
 
 @router.post("/{reservacion_id}/aprobar", response_model=ResponseBase[ReservacionDetailResponse])
 def aprobar_reservacion(
-    reservacion_id: int = Path(..., description="ID de la reservación a aprobar"),
-    datos: ReservacionApproval = None,
+    reservacion_id: int = Path(..., description="ID de la reservación a aprobar", ge=1),
+    aprobacion: ReservacionAprobacionDenegacion = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente", "Empleado"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """
     Aprobar una reservación
@@ -274,7 +274,7 @@ def aprobar_reservacion(
     Solo usuarios con roles de empleado o superiores pueden realizar esta acción.
     """
     # Verificar permisos del usuario
-    if not verificar_permisos_usuario(datos.IdUsuarioModificacion, db):
+    if not verificar_permisos_usuario(aprobacion.IdUsuarioModificacion, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para aprobar reservaciones. Se requiere rol de Empleado o superior."
@@ -292,21 +292,21 @@ def aprobar_reservacion(
         )
     
     # Verificar si el usuario aprobador existe
-    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == datos.IdUsuarioModificacion).first()
+    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == aprobacion.IdUsuarioModificacion).first()
     if usuario_modificacion is None:
-        raise HTTPException(status_code=404, detail=f"Usuario con ID {datos.IdUsuarioModificacion} no encontrado")
+        raise HTTPException(status_code=404, detail=f"Usuario con ID {aprobacion.IdUsuarioModificacion} no encontrado")
     
     # Actualizar la reservación con información de quien aprobó
     db_reservacion.Estado = "Aprobada"
     db_reservacion.FechaConfirmacion = datetime.now()
-    db_reservacion.IdUsuarioModificacion = datos.IdUsuarioModificacion
+    db_reservacion.IdUsuarioModificacion = aprobacion.IdUsuarioModificacion
     db_reservacion.FechaModificacion = datetime.now()
     
     db.commit()
     db.refresh(db_reservacion)
     
     # Obtener el nombre completo del usuario modificador para el mensaje
-    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == datos.IdUsuarioModificacion).first()
+    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == aprobacion.IdUsuarioModificacion).first()
     nombre_modificador = f"{usuario_modificacion.Nombre} {usuario_modificacion.Apellido}"
     rol_modificador = usuario_modificacion.Role.NombreRol
     
@@ -317,10 +317,10 @@ def aprobar_reservacion(
 
 @router.post("/{reservacion_id}/denegar", response_model=ResponseBase[ReservacionDetailResponse])
 def denegar_reservacion(
-    reservacion_id: int = Path(..., description="ID de la reservación a denegar"),
-    datos: ReservacionRejection = None,
+    reservacion_id: int = Path(..., description="ID de la reservación a denegar", ge=1),
+    denegacion: ReservacionAprobacionDenegacion = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente", "Empleado"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """
     Denegar una reservación
@@ -329,7 +329,7 @@ def denegar_reservacion(
     y quién realizó la denegación. Solo usuarios con roles de empleado o superiores pueden realizar esta acción.
     """
     # Verificar permisos del usuario
-    if not verificar_permisos_usuario(datos.IdUsuarioModificacion, db):
+    if not verificar_permisos_usuario(denegacion.IdUsuarioModificacion, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para denegar reservaciones. Se requiere rol de Empleado o superior."
@@ -347,21 +347,21 @@ def denegar_reservacion(
         )
     
     # Verificar si el usuario que deniega existe
-    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == datos.IdUsuarioModificacion).first()
+    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == denegacion.IdUsuarioModificacion).first()
     if usuario_modificacion is None:
-        raise HTTPException(status_code=404, detail=f"Usuario con ID {datos.IdUsuarioModificacion} no encontrado")
+        raise HTTPException(status_code=404, detail=f"Usuario con ID {denegacion.IdUsuarioModificacion} no encontrado")
     
     # Actualizar la reservación con información de quien denegó y motivo
     db_reservacion.Estado = "Denegada"
-    db_reservacion.MotivoRechazo = datos.MotivoRechazo
-    db_reservacion.IdUsuarioModificacion = datos.IdUsuarioModificacion
+    db_reservacion.MotivoRechazo = denegacion.MotivoRechazo
+    db_reservacion.IdUsuarioModificacion = denegacion.IdUsuarioModificacion
     db_reservacion.FechaModificacion = datetime.now()
     
     db.commit()
     db.refresh(db_reservacion)
     
     # Obtener el nombre completo del usuario modificador para el mensaje
-    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == datos.IdUsuarioModificacion).first()
+    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == denegacion.IdUsuarioModificacion).first()
     nombre_modificador = f"{usuario_modificacion.Nombre} {usuario_modificacion.Apellido}"
     rol_modificador = usuario_modificacion.Role.NombreRol
     
@@ -372,10 +372,9 @@ def denegar_reservacion(
 
 @router.delete("/{reservacion_id}", response_model=ResponseBase)
 def delete_reservacion(
-    reservacion_id: int = Path(..., description="ID de la reservación a eliminar"),
-    id_usuario_modificacion: int = Query(..., description="ID del usuario que realiza la eliminación"),
+    reservacion_id: int = Path(..., description="ID de la reservación a eliminar", ge=1),
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+    current_user = Depends(get_current_user)
 ):
     """Delete a reservation"""
     db_reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == reservacion_id).first()
@@ -383,9 +382,9 @@ def delete_reservacion(
         raise HTTPException(status_code=404, detail="Reservación no encontrada")
     
     # Verificar que el usuario exista
-    usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == id_usuario_modificacion).first()
+    usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == current_user.IdUsuario).first()
     if usuario is None:
-        raise HTTPException(status_code=404, detail=f"Usuario con ID {id_usuario_modificacion} no encontrado")
+        raise HTTPException(status_code=404, detail=f"Usuario con ID {current_user.IdUsuario} no encontrado")
     
     # Registrar la eliminación en el log (opcional)
     # Aquí podrías insertar un registro en una tabla de log antes de eliminar

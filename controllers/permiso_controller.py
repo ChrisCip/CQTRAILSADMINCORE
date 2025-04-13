@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from dbcontext.mydb import SessionLocal
 from dbcontext.models import Permisos
 from schemas.permiso_schema import PermisoCreate, PermisoUpdate, PermisoResponse
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_admin
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -28,7 +28,7 @@ def get_permisos(
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+    current_user = Depends(get_current_user)
 ):
     """Get all permissions"""
     permisos = db.query(Permisos).offset(skip).limit(limit).all()
@@ -38,7 +38,7 @@ def get_permisos(
 def get_permiso(
     permiso_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+    current_user = Depends(get_current_user)
 ):
     """Get a permission by ID"""
     permiso = db.query(Permisos).filter(Permisos.IdPermiso == permiso_id).first()
@@ -50,7 +50,7 @@ def get_permiso(
 def create_permiso(
     permiso: PermisoCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+    current_user = Depends(get_current_user)
 ):
     """Create a new permission"""
     db_permiso = Permisos(**permiso.model_dump())
@@ -67,7 +67,7 @@ def update_permiso(
     permiso_id: int, 
     permiso: PermisoUpdate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+    current_user = Depends(get_current_user)
 ):
     """Update a permission"""
     db_permiso = db.query(Permisos).filter(Permisos.IdPermiso == permiso_id).first()
@@ -90,7 +90,7 @@ def update_permiso(
 def delete_permiso(
     permiso_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Agregado require_admin para proteger el endpoint
+    current_user = Depends(get_current_user)
 ):
     """Delete a permission"""
     db_permiso = db.query(Permisos).filter(Permisos.IdPermiso == permiso_id).first()

@@ -6,7 +6,7 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import PreFacturas, Reservaciones
 from schemas.prefactura_schema import PreFacturaCreate, PreFacturaUpdate, PreFacturaResponse, PreFacturaDetailResponse
 from schemas.base_schemas import ResponseBase
-from dependencies.auth import get_current_user, require_role, require_admin  # Añadir esta importación
+from dependencies.auth import get_current_user
 
 # Create router for this controller
 router = APIRouter(
@@ -60,7 +60,7 @@ def get_prefactura(
 def create_prefactura(
     prefactura: PreFacturaCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """Create a new pre-invoice"""
     # Check if reservation exists
@@ -94,7 +94,7 @@ def update_prefactura(
     prefactura_id: int, 
     prefactura: PreFacturaUpdate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)
 ):
     """Update a pre-invoice"""
     db_prefactura = db.query(PreFacturas).filter(PreFacturas.IdPreFactura == prefactura_id).first()
@@ -124,7 +124,7 @@ def update_prefactura(
 def delete_prefactura(
     prefactura_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)  # Añadir protección JWT solo admin
+    current_user = Depends(get_current_user)
 ):
     """Delete a pre-invoice"""
     db_prefactura = db.query(PreFacturas).filter(PreFacturas.IdPreFactura == prefactura_id).first()

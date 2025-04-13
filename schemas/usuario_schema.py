@@ -38,3 +38,14 @@ class UsuarioDetailResponse(UsuarioResponse):
     
     class Config:
         from_attributes = True
+
+# Nuevas clases para funcionalidades específicas
+
+class UsuarioCambioRol(BaseModel):
+    IdRol: int
+    
+class UsuarioActivacion(BaseModel):
+    Activo: bool = True
+    
+class UsuarioCambioPassword(BaseModel):
+    nueva_password: str

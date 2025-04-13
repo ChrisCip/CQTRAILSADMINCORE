@@ -29,3 +29,7 @@ class VehiculoResponse(VehiculoBase):
     
     class Config:
         from_attributes = True
+
+class VehiculoDisponibilidad(BaseModel):
+    """Modelo para actualizar exclusivamente la disponibilidad de un vehículo"""
+    disponible: bool
