@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List
+from typing import Dict, Any
 
 class VehiculoBase(BaseModel):
     Placa: str
@@ -9,7 +10,7 @@ class VehiculoBase(BaseModel):
     Ano: int
     Price: int
     Disponible: Optional[bool] = True
-    Image_url: Optional[str] = None
+    Image_url: Optional[Dict[str, Any]] = None
 
 class VehiculoCreate(VehiculoBase):
     pass
@@ -22,7 +23,7 @@ class VehiculoUpdate(BaseModel):
     Ano: Optional[int] = None
     Price: Optional[int] = None
     Disponible: Optional[bool] = None
-    Image_url: Optional[str] = None
+    Image_url: Optional[Dict[str, Any]] = None
 
 class VehiculoResponse(VehiculoBase):
     IdVehiculo: int

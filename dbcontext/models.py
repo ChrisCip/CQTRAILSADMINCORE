@@ -4,6 +4,7 @@ from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Foreign
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import datetime
 import decimal
+from sqlalchemy.dialects.postgresql import JSONB
 
 class Base(DeclarativeBase):
     # Establecer el esquema por defecto para todas las tablas
@@ -99,7 +100,7 @@ class Vehiculos(Base):
     Ano: Mapped[int] = mapped_column(Integer)
     Disponible: Mapped[Optional[bool]] = mapped_column(Boolean, server_default=text('true'))
     Price: Mapped[Optional[int]] = mapped_column(Integer)
-    Image_url: Mapped[Optional[str]] = mapped_column(String(255))
+    Image_url: Mapped[Optional[dict]] = mapped_column(JSONB)
 
     VehiculosReservaciones: Mapped[List['VehiculosReservaciones']] = relationship('VehiculosReservaciones', back_populates='Vehiculos_')
 

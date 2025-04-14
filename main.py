@@ -5,6 +5,8 @@ from fastapi.routing import APIRoute
 from sqlalchemy.orm import Session
 from dbcontext.mydb import SessionLocal, engine
 import re
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 # Import auth_controller first (important for order)
 from controllers import auth_controller
@@ -133,6 +135,9 @@ app = FastAPI(
         "deepLinking": True,
     }
 )
+
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Add CORS middleware
 app.add_middleware(
