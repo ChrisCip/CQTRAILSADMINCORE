@@ -53,6 +53,42 @@ def get_usuarios(
     usuarios = db.query(Usuarios).offset(skip).limit(limit).all()
     return ResponseBase[List[UsuarioResponse]](data=usuarios)
 
+
+
+
+# OBTENER TODOS LOS USUARIOS CLIENTES ENDPOINT 
+@router.get(
+    "/clientes",
+    response_model=ResponseBase[List[UsuarioResponse]],
+    summary="Listar usuarios con rol Cliente",
+    description="Obtiene una lista de todos los usuarios que tienen el rol de Cliente."
+)
+def get_clientes(
+    skip: int = Query(0, description="Número de registros a omitir", ge=0),
+    limit: int = Query(100, description="Número máximo de registros a retornar", le=100),
+    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Lista todos los usuarios con rol Cliente"""
+    query = db.query(Usuarios).join(Roles).filter(Roles.NombreRol == "Cliente")
+    
+    if activo is not None:
+        query = query.filter(Usuarios.Activo == activo)
+    
+    clientes = query.offset(skip).limit(limit).all()
+    
+    return ResponseBase[List[UsuarioResponse]](
+        message="Lista de clientes obtenida exitosamente",
+        data=clientes
+    )
+
+
+
+
+
+
+
 # Protected endpoint - any authenticated user can get themselves,
 # but only admins/managers can get others
 @router.get(

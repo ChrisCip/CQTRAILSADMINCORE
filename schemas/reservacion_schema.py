@@ -80,6 +80,9 @@ class ReservacionAprobacionDenegacion(BaseModel):
     Comentario: Optional[str] = Field(None, description="Comentario adicional")
 
 # Response models with relationships but avoiding deep nesting
+
+
+
 class ReservacionResponse(BaseModel):
     IdReservacion: int
     FechaInicio: datetime
@@ -92,6 +95,7 @@ class ReservacionResponse(BaseModel):
     Estado: Optional[str] = "Pendiente"
     FechaReservacion: Optional[datetime] = None
     FechaConfirmacion: Optional[datetime] = None
+
     
     model_config = ConfigDict(from_attributes=True)
 

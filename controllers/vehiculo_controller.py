@@ -151,6 +151,32 @@ async def update_vehiculo(
     )
 
 
+@router.get(
+    "/tipos/count",
+    response_model=ResponseBase[dict],
+    summary="Contar vehículos por tipo",
+    description="Obtiene un conteo de vehículos agrupados por tipo."
+)
+def count_by_tipo(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Get count of vehicles by type"""
+    from sqlalchemy import func
+    
+    counts = db.query(
+        Vehiculos.TipoVehiculo,
+        func.count(Vehiculos.IdVehiculo).label('count')
+    ).group_by(Vehiculos.TipoVehiculo).all()
+    
+    # Convert result to dictionary
+    result = {tipo: count for tipo, count in counts}
+    
+    return ResponseBase[dict](
+        message="Conteo de vehículos por tipo obtenido exitosamente",
+        data=result
+    )
+
 
 
 

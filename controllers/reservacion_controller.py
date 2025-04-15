@@ -7,7 +7,7 @@ from sqlalchemy.sql import operators
 
 # Import necessary models and schemas
 from dbcontext.mydb import SessionLocal
-from dbcontext.models import Reservaciones, Usuarios, Empleados, Empresas, Roles, Vehiculos, VehiculosReservaciones
+from dbcontext.models import Reservaciones, Usuarios, Empleados, Empresas, Roles, Vehiculos, VehiculosReservaciones, Ciudades
 from schemas.reservacion_schema import (
     ReservacionCreate, ReservacionUpdate, ReservacionResponse, ReservacionDetailResponse,
     ReservacionApproval, ReservacionRejection, ReservacionAprobacionDenegacion
@@ -637,5 +637,90 @@ def get_estadisticas_dashboard(
             "destino_popular": destino_popular,
             "total_reservaciones": total_reservaciones,
             "periodo_dias": periodo_dias
+        }
+    )
+
+@router.get("/estadisticas/reservaciones-semana-actual", response_model=ResponseBase)
+def get_reservaciones_semana_actual(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Obtiene las reservaciones hechas en la semana actual agrupadas por día
+    
+    Devuelve el detalle de reservaciones para cada día de la semana actual
+    (domingo, lunes, martes, miércoles, jueves, viernes, sábado)
+    """
+    # Fecha actual
+    today = date.today()
+    
+    # Obtener el primer día de la semana (domingo)
+    start_of_week = today - timedelta(days=today.weekday() + 1)  # +1 para que sea domingo
+    
+    # Crear lista de días de la semana
+    days_of_week = []
+    for i in range(7):
+        days_of_week.append(start_of_week + timedelta(days=i))
+    
+    # Nombres de los días en español
+    day_names = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
+    
+    # Resultado para cada día
+    week_data = []
+    
+    # Consultar reservaciones para cada día
+    for i, day in enumerate(days_of_week):
+        # Hora de inicio y fin del día
+        day_start = datetime.combine(day, datetime.min.time())
+        day_end = datetime.combine(day, datetime.max.time())
+        
+        # Contar reservaciones del día
+        count = db.query(func.count(Reservaciones.IdReservacion)).filter(
+            Reservaciones.FechaReservacion >= day_start,
+            Reservaciones.FechaReservacion <= day_end
+        ).scalar() or 0
+        
+        # Obtener las reservaciones del día - convertir a ReservacionResponse
+        reservaciones_db = db.query(Reservaciones).filter(
+            Reservaciones.FechaReservacion >= day_start,
+            Reservaciones.FechaReservacion <= day_end
+        ).all()
+        
+        # Convertir modelos de DB a respuestas de esquema Pydantic
+        reservaciones = []
+        for res in reservaciones_db:
+            reservaciones.append({
+                "IdReservacion": res.IdReservacion,
+                "FechaInicio": res.FechaInicio,
+                "FechaFin": res.FechaFin,
+                "IdUsuario": res.IdUsuario,
+                "IdEmpleado": res.IdEmpleado,
+                "IdEmpresa": res.IdEmpresa,
+                "RutaPersonalizada": res.RutaPersonalizada,
+                "RequerimientosAdicionales": res.RequerimientosAdicionales,
+                "Estado": res.Estado,
+                "FechaReservacion": res.FechaReservacion,
+                "FechaConfirmacion": res.FechaConfirmacion
+            })
+        
+        # Determinar si es el día actual
+        is_today = day == today
+        
+        week_data.append({
+            "dia": day_names[i],
+            "fecha": day.strftime("%Y-%m-%d"),
+            "total_reservaciones": count,
+            "es_hoy": is_today,
+            "reservaciones": reservaciones
+        })
+    
+    return ResponseBase(
+        message="Reservaciones de la semana actual",
+        data={
+            "semana_actual": {
+                "inicio": start_of_week.strftime("%Y-%m-%d"),
+                "fin": (start_of_week + timedelta(days=6)).strftime("%Y-%m-%d")
+            },
+            "dias": week_data
         }
     )
