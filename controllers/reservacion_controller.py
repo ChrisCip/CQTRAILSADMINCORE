@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from sqlalchemy import func, extract, text, desc, case, cast, Float
+from sqlalchemy.sql import operators
 
 # Import necessary models and schemas
 from dbcontext.mydb import SessionLocal
-from dbcontext.models import Reservaciones, Usuarios, Empleados, Empresas, Roles
+from dbcontext.models import Reservaciones, Usuarios, Empleados, Empresas, Roles, Vehiculos, VehiculosReservaciones
 from schemas.reservacion_schema import (
     ReservacionCreate, ReservacionUpdate, ReservacionResponse, ReservacionDetailResponse,
     ReservacionApproval, ReservacionRejection, ReservacionAprobacionDenegacion
@@ -392,3 +394,248 @@ def delete_reservacion(
     db.delete(db_reservacion)
     db.commit()
     return ResponseBase(message=f"Reservación eliminada exitosamente por {usuario.Nombre} {usuario.Apellido}")
+
+@router.get("/estadisticas/crecimiento-semanal", response_model=ResponseBase)
+def get_crecimiento_semanal(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Obtiene el crecimiento semanal de reservaciones
+    
+    Calcula el porcentaje de incremento o decremento en reservas comparado con la semana anterior
+    """
+    # Fecha actual
+    today = date.today()
+    
+    # Cálculo de semana actual y anterior
+    current_week_start = today - timedelta(days=today.weekday())
+    current_week_end = current_week_start + timedelta(days=6)
+    previous_week_start = current_week_start - timedelta(days=7)
+    previous_week_end = current_week_start - timedelta(days=1)
+    
+    # Contar reservaciones de la semana actual
+    current_week_count = db.query(func.count(Reservaciones.IdReservacion)).filter(
+        Reservaciones.FechaReservacion >= current_week_start,
+        Reservaciones.FechaReservacion <= current_week_end
+    ).scalar() or 0
+    
+    # Contar reservaciones de la semana anterior
+    previous_week_count = db.query(func.count(Reservaciones.IdReservacion)).filter(
+        Reservaciones.FechaReservacion >= previous_week_start,
+        Reservaciones.FechaReservacion <= previous_week_end
+    ).scalar() or 0
+    
+    # Calcular el porcentaje de crecimiento
+    if previous_week_count == 0:
+        growth_percentage = 100 if current_week_count > 0 else 0
+    else:
+        growth_percentage = ((current_week_count - previous_week_count) / previous_week_count) * 100
+    
+    # Formatear el resultado
+    growth_sign = "+" if growth_percentage >= 0 else ""
+    
+    return ResponseBase(
+        message=f"{growth_sign}{growth_percentage:.1f}%",
+        data={
+            "current_week_count": current_week_count,
+            "previous_week_count": previous_week_count,
+            "growth_percentage": growth_percentage,
+            "period": {
+                "current_week": {
+                    "start": current_week_start,
+                    "end": current_week_end
+                },
+                "previous_week": {
+                    "start": previous_week_start,
+                    "end": previous_week_end
+                }
+            }
+        }
+    )
+
+@router.get("/estadisticas/destinos-populares", response_model=ResponseBase)
+def get_destinos_populares(
+    limite: int = Query(1, description="Número de destinos populares a retornar", ge=1),
+    periodo_dias: int = Query(30, description="Período en días para calcular destinos populares", ge=1),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Obtiene los destinos más populares en las reservaciones
+    
+    Analiza la ruta personalizada de las reservaciones para determinar los destinos
+    más frecuentes y su porcentaje sobre el total de reservaciones.
+    """
+    # Fecha límite para el período
+    date_limit = datetime.now() - timedelta(days=periodo_dias)
+    
+    # Total de reservaciones en el período
+    total_reservaciones = db.query(func.count(Reservaciones.IdReservacion)).filter(
+        Reservaciones.FechaReservacion >= date_limit
+    ).scalar() or 0
+    
+    if total_reservaciones == 0:
+        return ResponseBase(
+            message="No hay reservaciones en el período especificado",
+            data={"destinos": [], "total_reservaciones": 0}
+        )
+    
+    # Consulta para agrupar y contar por destino (RutaPersonalizada)
+    destinos = db.query(
+        Reservaciones.RutaPersonalizada.label('destino'),
+        func.count(Reservaciones.IdReservacion).label('total'),
+        (func.count(Reservaciones.IdReservacion) * 100 / total_reservaciones).label('porcentaje')
+    ).filter(
+        Reservaciones.FechaReservacion >= date_limit,
+        Reservaciones.RutaPersonalizada.isnot(None),
+        Reservaciones.RutaPersonalizada != ''
+    ).group_by(
+        Reservaciones.RutaPersonalizada
+    ).order_by(
+        desc('total')
+    ).limit(limite).all()
+    
+    # Formatear los resultados
+    resultados = []
+    for destino in destinos:
+        resultados.append({
+            "destino": destino.destino,
+            "total": destino.total,
+            "porcentaje": round(destino.porcentaje, 2)
+        })
+    
+    # Si hay resultados, preparar mensaje con el primer destino
+    mensaje = ""
+    if resultados:
+        top_destino = resultados[0]
+        mensaje = f"{top_destino['destino']}\n\n{top_destino['porcentaje']}% de todas las reservas"
+    
+    return ResponseBase(
+        message=mensaje,
+        data={
+            "destinos": resultados,
+            "total_reservaciones": total_reservaciones,
+            "periodo_dias": periodo_dias
+        }
+    )
+
+@router.get("/estadisticas/dashboard", response_model=ResponseBase)
+def get_estadisticas_dashboard(
+    periodo_dias: int = Query(30, description="Período en días para calcular estadísticas", ge=1),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Obtiene un dashboard completo de estadísticas para reservaciones
+    
+    Incluye crecimiento semanal, vehículo más reservado y destino más popular
+    en un solo endpoint para mostrar en el dashboard.
+    """
+    # Fecha actual
+    today = date.today()
+    
+    # Crecimiento semanal
+    current_week_start = today - timedelta(days=today.weekday())
+    current_week_end = current_week_start + timedelta(days=6)
+    previous_week_start = current_week_start - timedelta(days=7)
+    previous_week_end = current_week_start - timedelta(days=1)
+    
+    current_week_count = db.query(func.count(Reservaciones.IdReservacion)).filter(
+        Reservaciones.FechaReservacion >= current_week_start,
+        Reservaciones.FechaReservacion <= current_week_end
+    ).scalar() or 0
+    
+    previous_week_count = db.query(func.count(Reservaciones.IdReservacion)).filter(
+        Reservaciones.FechaReservacion >= previous_week_start,
+        Reservaciones.FechaReservacion <= previous_week_end
+    ).scalar() or 0
+    
+    if previous_week_count == 0:
+        growth_percentage = 100 if current_week_count > 0 else 0
+    else:
+        growth_percentage = ((current_week_count - previous_week_count) / previous_week_count) * 100
+    
+    growth_sign = "+" if growth_percentage >= 0 else ""
+    
+    # Fecha límite para el resto de estadísticas
+    date_limit = datetime.now() - timedelta(days=periodo_dias)
+    
+    # Destino más popular
+    total_reservaciones = db.query(func.count(Reservaciones.IdReservacion)).filter(
+        Reservaciones.FechaReservacion >= date_limit
+    ).scalar() or 0
+    
+    destino_popular = None
+    if total_reservaciones > 0:
+        destino = db.query(
+            Reservaciones.RutaPersonalizada.label('destino'),
+            func.count(Reservaciones.IdReservacion).label('total'),
+            (func.count(Reservaciones.IdReservacion) * 100 / total_reservaciones).label('porcentaje')
+        ).filter(
+            Reservaciones.FechaReservacion >= date_limit,
+            Reservaciones.RutaPersonalizada.isnot(None),
+            Reservaciones.RutaPersonalizada != ''
+        ).group_by(
+            Reservaciones.RutaPersonalizada
+        ).order_by(
+            desc('total')
+        ).first()
+        
+        if destino:
+            destino_popular = {
+                "destino": destino.destino,
+                "total": destino.total,
+                "porcentaje": round(destino.porcentaje, 2)
+            }
+    
+    # Vehículo más reservado
+    vehiculo_popular = None
+    vehiculo = db.query(
+        Vehiculos.IdVehiculo,
+        Vehiculos.Modelo,
+        Vehiculos.Placa,
+        Vehiculos.TipoVehiculo,
+        func.count(VehiculosReservaciones.IdReservacion).label('total_reservas')
+    ).join(
+        VehiculosReservaciones, 
+        Vehiculos.IdVehiculo == VehiculosReservaciones.IdVehiculo
+    ).join(
+        Reservaciones,
+        VehiculosReservaciones.IdReservacion == Reservaciones.IdReservacion
+    ).filter(
+        Reservaciones.FechaReservacion >= date_limit
+    ).group_by(
+        Vehiculos.IdVehiculo,
+        Vehiculos.Modelo,
+        Vehiculos.Placa,
+        Vehiculos.TipoVehiculo
+    ).order_by(
+        desc('total_reservas')
+    ).first()
+    
+    if vehiculo:
+        vehiculo_popular = {
+            "id_vehiculo": vehiculo.IdVehiculo,
+            "modelo": vehiculo.Modelo,
+            "placa": vehiculo.Placa,
+            "tipo_vehiculo": vehiculo.TipoVehiculo,
+            "total_reservas": vehiculo.total_reservas
+        }
+    
+    return ResponseBase(
+        message="Dashboard de estadísticas",
+        data={
+            "crecimiento_semanal": {
+                "porcentaje": growth_percentage,
+                "porcentaje_formateado": f"{growth_sign}{growth_percentage:.1f}%",
+                "mensaje": f"Incremento en reservas comparado con la semana anterior",
+                "current_week_count": current_week_count,
+                "previous_week_count": previous_week_count
+            },
+            "vehiculo_mas_reservado": vehiculo_popular,
+            "destino_popular": destino_popular,
+            "total_reservaciones": total_reservaciones,
+            "periodo_dias": periodo_dias
+        }
+    )

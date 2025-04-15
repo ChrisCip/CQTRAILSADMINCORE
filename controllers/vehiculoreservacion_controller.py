@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List
+from sqlalchemy import func, desc
+from datetime import datetime, timedelta
 
 from dbcontext.mydb import SessionLocal
 from dbcontext.models import VehiculosReservaciones, Vehiculos, Reservaciones
@@ -172,3 +174,68 @@ def delete_vehiculo_reservacion(
     db.delete(db_vehiculo_reservacion)
     db.commit()
     return ResponseBase(message="Asignación de vehículo eliminada exitosamente")
+
+@router.get("/estadisticas/vehiculo-mas-reservado", response_model=ResponseBase)
+def get_vehiculo_mas_reservado(
+    periodo_dias: int = Query(30, description="Período en días para calcular vehículo más reservado", ge=1),
+    limite: int = Query(1, description="Número de vehículos a retornar", ge=1),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Obtiene el vehículo más reservado en un período de tiempo
+    
+    Analiza las asignaciones de vehículos a reservaciones y retorna el vehículo
+    con mayor número de reservas junto con la cantidad de reservas realizadas.
+    """
+    # Fecha límite para el período
+    date_limit = datetime.now() - timedelta(days=periodo_dias)
+    
+    # Consulta para obtener los vehículos más reservados
+    vehiculos_reservados = db.query(
+        Vehiculos.IdVehiculo,
+        Vehiculos.Modelo,
+        Vehiculos.Placa,
+        Vehiculos.TipoVehiculo,
+        func.count(VehiculosReservaciones.IdReservacion).label('total_reservas')
+    ).join(
+        VehiculosReservaciones, 
+        Vehiculos.IdVehiculo == VehiculosReservaciones.IdVehiculo
+    ).join(
+        Reservaciones,
+        VehiculosReservaciones.IdReservacion == Reservaciones.IdReservacion
+    ).filter(
+        Reservaciones.FechaReservacion >= date_limit
+    ).group_by(
+        Vehiculos.IdVehiculo,
+        Vehiculos.Modelo,
+        Vehiculos.Placa,
+        Vehiculos.TipoVehiculo
+    ).order_by(
+        desc('total_reservas')
+    ).limit(limite).all()
+    
+    # Formatear los resultados
+    resultados = []
+    for vehiculo in vehiculos_reservados:
+        resultados.append({
+            "id_vehiculo": vehiculo.IdVehiculo,
+            "modelo": vehiculo.Modelo,
+            "placa": vehiculo.Placa,
+            "tipo_vehiculo": vehiculo.TipoVehiculo,
+            "total_reservas": vehiculo.total_reservas
+        })
+    
+    # Si hay resultados, preparar mensaje con el primer vehículo
+    mensaje = ""
+    if resultados:
+        top_vehiculo = resultados[0]
+        mensaje = f"{top_vehiculo['modelo']}\n\n{top_vehiculo['total_reservas']} reservas en los últimos {periodo_dias} días"
+    
+    return ResponseBase(
+        message=mensaje,
+        data={
+            "vehiculos": resultados,
+            "periodo_dias": periodo_dias
+        }
+    )
