@@ -61,6 +61,8 @@ def get_reservaciones(
     fecha_fin: Optional[datetime] = Query(None, description="Filtrar por fecha fin máxima"),
     id_usuario: Optional[int] = Query(None, description="Filtrar por ID de usuario"),
     id_empresa: Optional[int] = Query(None, description="Filtrar por ID de empresa"),
+    ciudadinicioid: Optional[int] = Query(None, description="Filtrar por ID de ciudad de inicio"),
+    ciudadfinid: Optional[int] = Query(None, description="Filtrar por ID de ciudad de fin"),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)  # Añadir protección JWT
 ):
@@ -85,6 +87,12 @@ def get_reservaciones(
         
     if id_empresa:
         query = query.filter(Reservaciones.IdEmpresa == id_empresa)
+        
+    if ciudadinicioid:
+        query = query.filter(Reservaciones.ciudadinicioid == ciudadinicioid)
+        
+    if ciudadfinid:
+        query = query.filter(Reservaciones.ciudadfinid == ciudadfinid)
     
     # Ordenar por fecha de reservación descendiente (las más nuevas primero)
     query = query.order_by(Reservaciones.FechaReservacion.desc())

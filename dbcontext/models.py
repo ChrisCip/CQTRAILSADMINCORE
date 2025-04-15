@@ -153,6 +153,8 @@ class Reservaciones(Base):
         ForeignKeyConstraint(['IdEmpleado'], ['miguel.Empleados.IdEmpleado'], name='Reservaciones_IdEmpleado_fkey'),
         ForeignKeyConstraint(['IdEmpresa'], ['miguel.Empresas.IdEmpresa'], name='Reservaciones_IdEmpresa_fkey'),
         ForeignKeyConstraint(['IdUsuario'], ['miguel.Usuarios.IdUsuario'], name='Reservaciones_IdUsuario_fkey'),
+        ForeignKeyConstraint(['ciudadinicioid'], ['miguel.Ciudades.IdCiudad'], name='Reservaciones_ciudadinicioid_fkey'),
+        ForeignKeyConstraint(['ciudadfinid'], ['miguel.Ciudades.IdCiudad'], name='Reservaciones_ciudadfinid_fkey'),
         PrimaryKeyConstraint('IdReservacion', name='Reservaciones_pkey'),
         {'schema': 'miguel'}
     )
@@ -163,6 +165,8 @@ class Reservaciones(Base):
     IdUsuario: Mapped[Optional[int]] = mapped_column(Integer)
     IdEmpleado: Mapped[Optional[int]] = mapped_column(Integer)
     IdEmpresa: Mapped[Optional[int]] = mapped_column(Integer)
+    ciudadinicioid: Mapped[Optional[int]] = mapped_column(Integer)
+    ciudadfinid: Mapped[Optional[int]] = mapped_column(Integer)
     RutaPersonalizada: Mapped[Optional[str]] = mapped_column(String(255))
     RequerimientosAdicionales: Mapped[Optional[str]] = mapped_column(String(255))
     Estado: Mapped[Optional[str]] = mapped_column(String(20), server_default=text("'Pendiente'::character varying"))
@@ -175,6 +179,8 @@ class Reservaciones(Base):
     Empleados_: Mapped[Optional['Empleados']] = relationship('Empleados', back_populates='Reservaciones')
     Empresas_: Mapped[Optional['Empresas']] = relationship('Empresas', back_populates='Reservaciones')
     Usuarios_: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='Reservaciones')
+    CiudadInicio: Mapped[Optional['Ciudades']] = relationship('Ciudades', foreign_keys=[ciudadinicioid])
+    CiudadFin: Mapped[Optional['Ciudades']] = relationship('Ciudades', foreign_keys=[ciudadfinid])
     Notificaciones: Mapped[List['Notificaciones']] = relationship('Notificaciones', back_populates='Reservaciones_')
     PreFacturas: Mapped[List['PreFacturas']] = relationship('PreFacturas', back_populates='Reservaciones_')
     VehiculosReservaciones: Mapped[List['VehiculosReservaciones']] = relationship('VehiculosReservaciones', back_populates='Reservaciones_')

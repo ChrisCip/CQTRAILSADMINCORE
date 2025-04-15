@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
+from schemas.ciudad_schema import CiudadResponse
 
 # Basic schemas without circular references
 class ReservacionBase(BaseModel):
@@ -9,6 +10,8 @@ class ReservacionBase(BaseModel):
     IdUsuario: Optional[int] = Field(None, description="ID del usuario que hizo la reservación (para usuario final)")
     IdEmpleado: Optional[int] = Field(None, description="ID del empleado relacionado (para empresas)")
     IdEmpresa: Optional[int] = Field(None, description="ID de la empresa relacionada (para empresas)")
+    ciudadinicioid: Optional[int] = Field(None, description="ID de la ciudad de inicio")
+    ciudadfinid: Optional[int] = Field(None, description="ID de la ciudad de fin")
     RutaPersonalizada: Optional[str] = Field(None, description="Descripción de ruta personalizada")
     RequerimientosAdicionales: Optional[str] = Field(None, description="Requerimientos adicionales de la reservación")
     Estado: Optional[str] = Field("Pendiente", description="Estado de la reservación (Pendiente, Aprobada, Denegada)")
@@ -26,6 +29,8 @@ class ReservacionUpdate(BaseModel):
     IdUsuario: Optional[int] = None
     IdEmpleado: Optional[int] = None
     IdEmpresa: Optional[int] = None
+    ciudadinicioid: Optional[int] = None
+    ciudadfinid: Optional[int] = None
     RutaPersonalizada: Optional[str] = None
     RequerimientosAdicionales: Optional[str] = None
     Estado: Optional[str] = None
@@ -90,6 +95,8 @@ class ReservacionResponse(BaseModel):
     IdUsuario: Optional[int] = None
     IdEmpleado: Optional[int] = None
     IdEmpresa: Optional[int] = None
+    ciudadinicioid: Optional[int] = None
+    ciudadfinid: Optional[int] = None
     RutaPersonalizada: Optional[str] = None
     RequerimientosAdicionales: Optional[str] = None
     Estado: Optional[str] = "Pendiente"
@@ -104,6 +111,8 @@ class ReservacionDetailResponse(ReservacionResponse):
     Usuarios1: Optional[UsuarioSimple] = None
     Empleados1: Optional[EmpleadoSimple] = None
     Empresas1: Optional[EmpresaSimple] = None
+    CiudadInicio: Optional[CiudadResponse] = None
+    CiudadFin: Optional[CiudadResponse] = None
     FechaModificacion: Optional[datetime] = None
     MotivoRechazo: Optional[str] = None
     UsuarioModificacion: Optional[UsuarioModificacion] = None
