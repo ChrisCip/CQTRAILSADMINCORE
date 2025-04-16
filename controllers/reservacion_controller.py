@@ -118,12 +118,14 @@ def get_reservacion(
     
     # Incluimos el nombre del usuario que modificó en el mensaje si existe
     mensaje = "Detalles de la reservación"
-    if reservacion.UsuarioModificacion:
-        modificador = reservacion.UsuarioModificacion
-        if reservacion.Estado == "Aprobada":
-            mensaje = f"Reservación aprobada por {modificador.Nombre} {modificador.Apellido}"
-        elif reservacion.Estado == "Denegada":
-            mensaje = f"Reservación denegada por {modificador.Nombre} {modificador.Apellido}"
+    if hasattr(reservacion, 'IdUsuarioModificacion') and reservacion.IdUsuarioModificacion:
+        # Buscar el usuario modificador en la base de datos
+        modificador = db.query(Usuarios).filter(Usuarios.IdUsuario == reservacion.IdUsuarioModificacion).first()
+        if modificador:
+            if reservacion.Estado == "Aprobada":
+                mensaje = f"Reservación aprobada por {modificador.Nombre} {modificador.Apellido}"
+            elif reservacion.Estado == "Denegada":
+                mensaje = f"Reservación denegada por {modificador.Nombre} {modificador.Apellido}"
     
     return ResponseBase[ReservacionDetailResponse](
         message=mensaje,
