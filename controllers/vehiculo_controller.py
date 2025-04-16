@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
 from sqlalchemy.orm import Session
 from typing import List, Optional
-
-
+import os
+import tempfile
+import shutil
 
 from dbcontext.mydb import SessionLocal
 from dbcontext.models import Vehiculos
@@ -11,8 +12,10 @@ from schemas.base_schemas import ResponseBase
 from dependencies.auth import get_current_user
 from utils.image_storage import ImageStorage
 from utils.image_handler import validate_and_format_images
+from utils.google_drive_service import GoogleDriveService
 
 image_storage = ImageStorage()
+google_drive_service = GoogleDriveService()
 
 # Create router for this controller
 router = APIRouter(
@@ -62,10 +65,6 @@ def get_vehiculo(
         raise HTTPException(status_code=404, detail="Vehículo no encontrado")
     return ResponseBase[VehiculoResponse](data=vehiculo)
 
-
-
-
-
 @router.post("/", response_model=ResponseBase[VehiculoResponse])
 async def create_vehiculo(
         vehiculo: VehiculoCreate = Depends(),
@@ -90,7 +89,31 @@ async def create_vehiculo(
     # Handle image uploads if any
     if files:
         try:
-            image_urls = await image_storage.save_images(files, db_vehiculo.IdVehiculo)
+            # Upload images to Google Drive
+            image_urls = {}
+            for i, file in enumerate(files, 1):
+                if i > 3:  # Maximum 3 images
+                    break
+                
+                # Create temporary file to save the upload
+                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp:
+                    shutil.copyfileobj(file.file, temp)
+                    temp_path = temp.name
+                
+                try:
+                    # Upload to Google Drive
+                    file_name = f"vehicle_{db_vehiculo.IdVehiculo}_{i}{os.path.splitext(file.filename)[1]}"
+                    drive_url = google_drive_service.upload_file(temp_path, file_name)
+                    
+                    if drive_url:
+                        image_urls[f"image{i}"] = drive_url
+                    else:
+                        raise HTTPException(status_code=500, detail=f"No se pudo subir la imagen {i} a Google Drive")
+                finally:
+                    # Clean up the temp file
+                    os.unlink(temp_path)
+            
+            # Save URLs to database
             db_vehiculo.Image_url = image_urls
             db.commit()
             db.refresh(db_vehiculo)
@@ -127,12 +150,31 @@ async def update_vehiculo(
     # Handle image uploads if any
     if files:
         try:
-            # Delete existing images
-            if db_vehiculo.Image_url:
-                image_storage.delete_images(db_vehiculo.Image_url)
+            # Upload images to Google Drive
+            image_urls = {}
+            for i, file in enumerate(files, 1):
+                if i > 3:  # Maximum 3 images
+                    break
+                
+                # Create temporary file to save the upload
+                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp:
+                    shutil.copyfileobj(file.file, temp)
+                    temp_path = temp.name
+                
+                try:
+                    # Upload to Google Drive
+                    file_name = f"vehicle_{vehiculo_id}_{i}{os.path.splitext(file.filename)[1]}"
+                    drive_url = google_drive_service.upload_file(temp_path, file_name)
+                    
+                    if drive_url:
+                        image_urls[f"image{i}"] = drive_url
+                    else:
+                        raise HTTPException(status_code=500, detail=f"No se pudo subir la imagen {i} a Google Drive")
+                finally:
+                    # Clean up the temp file
+                    os.unlink(temp_path)
             
-            # Save new images
-            image_urls = await image_storage.save_images(files, vehiculo_id)
+            # Save URLs to database (replace existing images)
             vehiculo.Image_url = image_urls
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -149,7 +191,6 @@ async def update_vehiculo(
         message="Vehículo actualizado exitosamente",
         data=db_vehiculo
     )
-
 
 @router.get(
     "/tipos/count",
@@ -176,22 +217,6 @@ def count_by_tipo(
         message="Conteo de vehículos por tipo obtenido exitosamente",
         data=result
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @router.delete("/{vehiculo_id}", response_model=ResponseBase)
 def delete_vehiculo(
