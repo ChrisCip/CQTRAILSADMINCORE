@@ -57,6 +57,8 @@ nosetests.xml
 coverage.xml
 *.cover
 
+credentials.json
+
 # Project specific
 # Add custom ignore patterns here
 .txt
@@ -65,4 +67,4 @@ coverage.xml
 .docx
 .doc
 .xls
-.xlsx
+.xlsxcredentials.json
