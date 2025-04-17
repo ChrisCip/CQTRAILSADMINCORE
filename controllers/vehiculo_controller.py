@@ -128,13 +128,24 @@ async def create_vehiculo(
         data=db_vehiculo
     )
 
+
+
+
+
+
+
+
+
+
+
 @router.put("/{vehiculo_id}", response_model=ResponseBase[VehiculoResponse])
 async def update_vehiculo(
-    vehiculo_id: int,
-    vehiculo: VehiculoUpdate = Depends(),
-    files: List[UploadFile] = File(default=None),
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+        vehiculo_id: int,
+        vehiculo: VehiculoUpdate = Depends(),
+        files: List[UploadFile] = File(default=None),
+        keepExistingImages: bool = Query(True),
+        db: Session = Depends(get_db),
+        current_user = Depends(get_current_user)
 ):
     """Update vehicle properties and optionally its images"""
     db_vehiculo = db.query(Vehiculos).filter(Vehiculos.IdVehiculo == vehiculo_id).first()
@@ -155,17 +166,17 @@ async def update_vehiculo(
             for i, file in enumerate(files, 1):
                 if i > 3:  # Maximum 3 images
                     break
-                
+
                 # Create temporary file to save the upload
                 with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp:
                     shutil.copyfileobj(file.file, temp)
                     temp_path = temp.name
-                
+
                 try:
                     # Upload to Google Drive
                     file_name = f"vehicle_{vehiculo_id}_{i}{os.path.splitext(file.filename)[1]}"
                     drive_url = google_drive_service.upload_file(temp_path, file_name)
-                    
+
                     if drive_url:
                         image_urls[f"image{i}"] = drive_url
                     else:
@@ -173,15 +184,32 @@ async def update_vehiculo(
                 finally:
                     # Clean up the temp file
                     os.unlink(temp_path)
-            
-            # Save URLs to database (replace existing images)
-            vehiculo.Image_url = image_urls
+
+            # Si hay imágenes existentes y keepExistingImages es True, combinar en lugar de reemplazar
+            if keepExistingImages and db_vehiculo.Image_url:
+                # Si ya existe Image_url, combinar las URLs nuevas con las existentes
+                existing_images = db_vehiculo.Image_url.copy() if isinstance(db_vehiculo.Image_url, dict) else {}
+                # Actualizar solo las imágenes nuevas, dejando el resto intactas
+                for key, value in image_urls.items():
+                    existing_images[key] = value
+                vehiculo.Image_url = existing_images
+            else:
+                # Sino, reemplazar todas las imágenes
+                vehiculo.Image_url = image_urls
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
+    else:
+        # Si no hay nuevos archivos y keepExistingImages=True, mantener las imágenes actuales
+        # No modificar Image_url en este caso
+        if 'Image_url' in vehiculo.model_dump():
+            vehiculo.Image_url = None  # No cambiar las imágenes existentes
 
     # Update vehicle properties
-    update_data = vehiculo.model_dump(exclude_unset=True)
+    update_data = vehiculo.model_dump(exclude_unset=True, exclude={'Image_url'} if not files and keepExistingImages else set())
     for key, value in update_data.items():
+        if key == 'Image_url' and value is None and keepExistingImages:
+            # Saltar la actualización de Image_url si es None y keepExistingImages=True
+            continue
         setattr(db_vehiculo, key, value)
 
     db.commit()
@@ -191,6 +219,10 @@ async def update_vehiculo(
         message="Vehículo actualizado exitosamente",
         data=db_vehiculo
     )
+
+
+
+
 
 @router.get(
     "/tipos/count",
