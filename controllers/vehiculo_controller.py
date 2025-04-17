@@ -124,7 +124,7 @@ async def create_vehiculo(
             raise HTTPException(status_code=400, detail=str(e))
 
     return ResponseBase[VehiculoResponse](
-        message="Vehículo creado exitosamente",
+        message="Vehículo creado exitosaemente",
         data=db_vehiculo
     )
 
