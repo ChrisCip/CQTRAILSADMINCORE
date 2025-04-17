@@ -50,8 +50,29 @@ def get_usuarios(
     current_user = Depends(get_current_user)
 ):
     """Lista todos los usuarios (requiere rol Administrador o Gerente)"""
-    usuarios = db.query(Usuarios).offset(skip).limit(limit).all()
-    return ResponseBase[List[UsuarioResponse]](data=usuarios)
+    # Verificar si es admin o gerente
+    is_admin_or_manager = False
+    if hasattr(current_user, 'role'):
+        is_admin_or_manager = current_user.role in ["Admin", "Administrador", "Gerente"]
+    elif hasattr(current_user, 'rol'):
+        is_admin_or_manager = current_user.rol in ["Admin", "Administrador", "Gerente"]
+    
+    if not is_admin_or_manager:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores o gerentes pueden listar todos los usuarios"
+        )
+    
+    query = db.query(Usuarios)
+    
+    if activo is not None:
+        query = query.filter(Usuarios.Activo == activo)
+        
+    usuarios = query.offset(skip).limit(limit).all()
+    return ResponseBase[List[UsuarioResponse]](
+        message="Lista de usuarios obtenida exitosamente",
+        data=usuarios
+    )
 
 
 
@@ -71,6 +92,19 @@ def get_clientes(
     current_user = Depends(get_current_user)
 ):
     """Lista todos los usuarios con rol Cliente"""
+    # Verificar si es admin o gerente
+    is_admin_or_manager = False
+    if hasattr(current_user, 'role'):
+        is_admin_or_manager = current_user.role in ["Admin", "Administrador", "Gerente"]
+    elif hasattr(current_user, 'rol'):
+        is_admin_or_manager = current_user.rol in ["Admin", "Administrador", "Gerente"]
+    
+    if not is_admin_or_manager:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores o gerentes pueden listar los clientes"
+        )
+    
     query = db.query(Usuarios).join(Roles).filter(Roles.NombreRol == "Cliente")
     
     if activo is not None:
@@ -109,11 +143,13 @@ def get_usuario(
     - Otros usuarios solo pueden ver su propia información
     """
     # Check if user has permission to access this user's data
-    if current_user.role not in ["Administrador", "Gerente"] and current_user.user_id != usuario_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tiene permiso para ver información de este usuario"
-        )
+    if (hasattr(current_user, 'role') and current_user.role not in ["Admin", "Administrador", "Gerente"]) and current_user.user_id != usuario_id:
+        # Si estamos usando request.state para almacenar el rol
+        if hasattr(current_user, 'rol') and current_user.rol not in ["Admin", "Administrador", "Gerente"] and current_user.user_id != usuario_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene permiso para ver información de este usuario"
+            )
     
     usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == usuario_id).first()
     if usuario is None:
@@ -135,6 +171,19 @@ def create_usuario(
     current_user = Depends(get_current_user)
 ):
     """Crea un nuevo usuario (solo administradores)"""
+    # Verificar si es admin
+    is_admin = False
+    if hasattr(current_user, 'role'):
+        is_admin = current_user.role in ["Admin", "Administrador"]
+    elif hasattr(current_user, 'rol'):
+        is_admin = current_user.rol in ["Admin", "Administrador"]
+    
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden crear nuevos usuarios"
+        )
+    
     # Check if role exists
     db_rol = db.query(Roles).filter(Roles.IdRol == usuario.IdRol).first()
     if db_rol is None:
@@ -156,8 +205,11 @@ def create_usuario(
     db.commit()
     db.refresh(db_usuario)
     
+    # Get admin email for the message
+    admin_email = current_user.email if hasattr(current_user, 'email') else "administrador"
+    
     return ResponseBase[UsuarioResponse](
-        message=f"Usuario creado exitosamente por el administrador {current_user.email}", 
+        message=f"Usuario creado exitosamente por el administrador {admin_email}", 
         data=db_usuario
     )
 
@@ -187,14 +239,20 @@ def update_usuario(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     # Check permissions - only admin can update other users
-    if current_user.role != "Administrador" and current_user.user_id != usuario_id:
+    is_admin = False
+    if hasattr(current_user, 'role'):
+        is_admin = current_user.role in ["Admin", "Administrador"]
+    elif hasattr(current_user, 'rol'):
+        is_admin = current_user.rol in ["Admin", "Administrador"]
+    
+    if not is_admin and current_user.user_id != usuario_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permiso para actualizar a este usuario"
         )
     
     # Check permissions - only admin can update roles
-    if usuario.IdRol is not None and current_user.role != "Administrador":
+    if usuario.IdRol is not None and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los administradores pueden cambiar roles"
@@ -254,7 +312,10 @@ def delete_usuario(
     db.delete(db_usuario)
     db.commit()
     
-    return ResponseBase(message=f"Usuario eliminado exitosamente por el administrador {current_user.email}")
+    # Get admin email for the message
+    admin_email = current_user.email if hasattr(current_user, 'email') else "administrador"
+    
+    return ResponseBase(message=f"Usuario eliminado exitosamente por el administrador {admin_email}")
 
 # Admin endpoint to change user's role
 @router.put(
@@ -270,6 +331,19 @@ def update_usuario_rol(
     current_user = Depends(get_current_user)
 ):
     """Cambia el rol de un usuario (solo administradores)"""
+    # Verificar si es admin
+    is_admin = False
+    if hasattr(current_user, 'role'):
+        is_admin = current_user.role in ["Admin", "Administrador"]
+    elif hasattr(current_user, 'rol'):
+        is_admin = current_user.rol in ["Admin", "Administrador"]
+    
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden cambiar roles de usuarios"
+        )
+    
     # Check if user exists
     db_usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == usuario_id).first()
     if db_usuario is None:
@@ -304,6 +378,19 @@ def activar_usuario(
     current_user = Depends(get_current_user)
 ):
     """Activa una cuenta de usuario (solo administradores)"""
+    # Verificar si es admin
+    is_admin = False
+    if hasattr(current_user, 'role'):
+        is_admin = current_user.role in ["Admin", "Administrador"]
+    elif hasattr(current_user, 'rol'):
+        is_admin = current_user.rol in ["Admin", "Administrador"]
+    
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden activar usuarios"
+        )
+    
     db_usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == usuario_id).first()
     if db_usuario is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -329,6 +416,19 @@ def desactivar_usuario(
     current_user = Depends(get_current_user)
 ):
     """Desactiva una cuenta de usuario (solo administradores)"""
+    # Verificar si es admin
+    is_admin = False
+    if hasattr(current_user, 'role'):
+        is_admin = current_user.role in ["Admin", "Administrador"]
+    elif hasattr(current_user, 'rol'):
+        is_admin = current_user.rol in ["Admin", "Administrador"]
+    
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden desactivar usuarios"
+        )
+    
     db_usuario = db.query(Usuarios).filter(Usuarios.IdUsuario == usuario_id).first()
     if db_usuario is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -367,21 +467,25 @@ def cambiar_password(
     if db_usuario is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
+    # Verificar si es admin
+    is_admin = False
+    if hasattr(current_user, 'role'):
+        is_admin = current_user.role in ["Admin", "Administrador"]
+    elif hasattr(current_user, 'rol'):
+        is_admin = current_user.rol in ["Admin", "Administrador"]
+    
     # Solo el propio usuario o un admin pueden cambiar la contraseña
-    if current_user.user_id != usuario_id and current_user.role != "Admin":
+    if current_user.user_id != usuario_id and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="No tienes permiso para cambiar la contraseña de otro usuario"
         )
     
     # Generar hash de la nueva contraseña
-    hashed_password = bcrypt.hashpw(
-        cambio_password.nueva_password.encode('utf-8'), 
-        bcrypt.gensalt()
-    ).decode('utf-8')
+    hashed_password = hash_password(cambio_password.nueva_password)
     
     # Actualizar contraseña
-    db_usuario.Password = hashed_password
+    db_usuario.PasswordHash = hashed_password
     db.commit()
     
     return ResponseBase(message="Contraseña actualizada exitosamente")
