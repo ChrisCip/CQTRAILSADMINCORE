@@ -178,7 +178,7 @@ class Reservaciones(Base):
 
     Empleados_: Mapped[Optional['Empleados']] = relationship('Empleados', back_populates='Reservaciones')
     Empresas_: Mapped[Optional['Empresas']] = relationship('Empresas', back_populates='Reservaciones')
-    Usuarios_: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='Reservaciones')
+    Usuarios_: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='Reservaciones', lazy='joined')
     CiudadInicio: Mapped[Optional['Ciudades']] = relationship('Ciudades', foreign_keys=[ciudadinicioid])
     CiudadFin: Mapped[Optional['Ciudades']] = relationship('Ciudades', foreign_keys=[ciudadfinid])
     Notificaciones: Mapped[List['Notificaciones']] = relationship('Notificaciones', back_populates='Reservaciones_')

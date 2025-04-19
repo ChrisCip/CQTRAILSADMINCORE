@@ -90,6 +90,67 @@ def get_roles_permisos(
     
     return ResponseBase[List[RolPermisoResponse]](data=permisos)
 
+
+@router.get(
+    "/{rol_id}/{permiso_id}",
+    response_model=ResponseBase[RolPermisoResponse],
+    summary="Obtener permiso específico de un rol",
+    description="Obtiene los detalles de un permiso específico asignado a un rol mediante sus IDs."
+)
+def get_rol_permiso(
+    rol_id: int,
+    permiso_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Obtiene un permiso específico para un rol"""
+    query = text("""
+    SELECT
+        rp."IdRol",
+        rp."IdPermiso",
+        rp."Crear",
+        rp."Editar",
+        rp."Leer",
+        rp."Eliminar",
+        r."NombreRol",
+        p."NombrePermiso"
+    FROM
+        miguel."RolesPermisos" rp
+    JOIN
+        miguel."Roles" r ON rp."IdRol" = r."IdRol"
+    JOIN
+        miguel."Permisos" p ON rp."IdPermiso" = p."IdPermiso"
+    WHERE
+        rp."IdRol" = :rol_id AND rp."IdPermiso" = :permiso_id
+    """)
+
+    result = db.execute(query, {
+        "rol_id": rol_id,
+        "permiso_id": permiso_id
+    }).first()
+
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontró el permiso {permiso_id} para el rol {rol_id}"
+        )
+
+    permiso = {
+        "IdRol": result[0],
+        "IdPermiso": result[1],
+        "Crear": result[2],
+        "Editar": result[3],
+        "Leer": result[4],
+        "Eliminar": result[5],
+        "NombreRol": result[6],
+        "NombrePermiso": result[7]
+    }
+
+    return ResponseBase[RolPermisoResponse](
+        message="Permiso de rol encontrado",
+        data=permiso
+    )
+
 # Get role permissions by role ID - Admin only
 @router.get(
     "/rol/{rol_id}", 

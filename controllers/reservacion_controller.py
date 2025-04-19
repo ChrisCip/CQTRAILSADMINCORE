@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from sqlalchemy import func, extract, text, desc, case, cast, Float
@@ -10,7 +10,8 @@ from dbcontext.mydb import SessionLocal
 from dbcontext.models import Reservaciones, Usuarios, Empleados, Empresas, Roles, Vehiculos, VehiculosReservaciones, Ciudades
 from schemas.reservacion_schema import (
     ReservacionCreate, ReservacionUpdate, ReservacionResponse, ReservacionDetailResponse,
-    ReservacionApproval, ReservacionRejection, ReservacionAprobacionDenegacion
+    ReservacionApproval, ReservacionRejection, ReservacionAprobacionDenegacion, 
+    MotivoRechazoSimple, CambioEstadoReservacion
 )
 from schemas.base_schemas import ResponseBase
 from dependencies.auth import get_current_user
@@ -71,7 +72,14 @@ def get_reservaciones(
     
     Esta operación permite listar todas las reservaciones con paginación y filtros.
     """
-    query = db.query(Reservaciones)
+    # Use joinedload to eager load all related entities efficiently in a single query
+    query = db.query(Reservaciones).options(
+        joinedload(Reservaciones.Usuarios_).joinedload(Usuarios.Roles_),
+        joinedload(Reservaciones.Empleados_).joinedload(Empleados.Usuarios_),
+        joinedload(Reservaciones.Empresas_),
+        joinedload(Reservaciones.CiudadInicio),
+        joinedload(Reservaciones.CiudadFin)
+    )
     
     if estado:
         query = query.filter(Reservaciones.Estado == estado)
@@ -110,22 +118,28 @@ def get_reservacion(
     Obtener información detallada de una reservación específica
     
     Esta operación permite consultar todos los datos de una reservación, incluyendo información
-    sobre el usuario o empresa asociada, y el usuario que realizó modificaciones al estado de la reservación.
+    sobre el usuario o empresa asociada.
     """
-    reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == reservacion_id).first()
+    # Use joinedload to eager load all related entities for better performance
+    reservacion = db.query(Reservaciones).options(
+        joinedload(Reservaciones.Usuarios_).joinedload(Usuarios.Roles_),
+        joinedload(Reservaciones.Empleados_).joinedload(Empleados.Usuarios_),
+        joinedload(Reservaciones.Empresas_),
+        joinedload(Reservaciones.CiudadInicio),
+        joinedload(Reservaciones.CiudadFin)
+    ).filter(Reservaciones.IdReservacion == reservacion_id).first()
+    
     if reservacion is None:
         raise HTTPException(status_code=404, detail="Reservación no encontrada")
     
-    # Incluimos el nombre del usuario que modificó en el mensaje si existe
+    # Preparar mensaje según el estado de la reservación
     mensaje = "Detalles de la reservación"
-    if hasattr(reservacion, 'IdUsuarioModificacion') and reservacion.IdUsuarioModificacion:
-        # Buscar el usuario modificador en la base de datos
-        modificador = db.query(Usuarios).filter(Usuarios.IdUsuario == reservacion.IdUsuarioModificacion).first()
-        if modificador:
-            if reservacion.Estado == "Aprobada":
-                mensaje = f"Reservación aprobada por {modificador.Nombre} {modificador.Apellido}"
-            elif reservacion.Estado == "Denegada":
-                mensaje = f"Reservación denegada por {modificador.Nombre} {modificador.Apellido}"
+    if reservacion.Estado == "Aprobada":
+        mensaje = "Reservación aprobada"
+    elif reservacion.Estado == "Denegada" and reservacion.MotivoRechazo:
+        mensaje = f"Reservación denegada: {reservacion.MotivoRechazo}"
+    elif reservacion.Estado == "Denegada":
+        mensaje = "Reservación denegada"
     
     return ResponseBase[ReservacionDetailResponse](
         message=mensaje,
@@ -243,9 +257,9 @@ def update_reservacion(
     for key, value in update_data.items():
         setattr(db_reservacion, key, value)
     
-    # Registrar quién hizo la modificación y cuándo
-    db_reservacion.IdUsuarioModificacion = id_usuario_modificacion
-    db_reservacion.FechaModificacion = datetime.now()
+    # Si se está actualizando el estado a "Denegada", guardar el motivo de rechazo si se proporciona
+    if reservacion.Estado == "Denegada" and reservacion.MotivoRechazo:
+        db_reservacion.MotivoRechazo = reservacion.MotivoRechazo
     
     # If updating status to "Aprobada", set confirmation date
     if reservacion.Estado == "Aprobada" and db_reservacion.Estado != "Aprobada":
@@ -275,23 +289,15 @@ def update_reservacion(
 @router.post("/{reservacion_id}/aprobar", response_model=ResponseBase[ReservacionDetailResponse])
 def aprobar_reservacion(
     reservacion_id: int = Path(..., description="ID de la reservación a aprobar", ge=1),
-    aprobacion: ReservacionAprobacionDenegacion = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """
     Aprobar una reservación
     
-    Esta operación cambia el estado de una reservación a 'Aprobada' y registra quién realizó la aprobación.
-    Solo usuarios con roles de empleado o superiores pueden realizar esta acción.
+    Esta operación cambia el estado de una reservación a 'Aprobada'.
+    La autorización es manejada por el middleware.
     """
-    # Verificar permisos del usuario
-    if not verificar_permisos_usuario(aprobacion.IdUsuarioModificacion, db):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tiene permisos para aprobar reservaciones. Se requiere rol de Empleado o superior."
-        )
-    
     db_reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == reservacion_id).first()
     if db_reservacion is None:
         raise HTTPException(status_code=404, detail="Reservación no encontrada")
@@ -303,50 +309,31 @@ def aprobar_reservacion(
             detail=f"No se puede aprobar la reservación porque su estado actual es '{db_reservacion.Estado}'"
         )
     
-    # Verificar si el usuario aprobador existe
-    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == aprobacion.IdUsuarioModificacion).first()
-    if usuario_modificacion is None:
-        raise HTTPException(status_code=404, detail=f"Usuario con ID {aprobacion.IdUsuarioModificacion} no encontrado")
-    
-    # Actualizar la reservación con información de quien aprobó
+    # Actualizar la reservación a estado aprobado
     db_reservacion.Estado = "Aprobada"
     db_reservacion.FechaConfirmacion = datetime.now()
-    db_reservacion.IdUsuarioModificacion = aprobacion.IdUsuarioModificacion
-    db_reservacion.FechaModificacion = datetime.now()
     
     db.commit()
     db.refresh(db_reservacion)
     
-    # Obtener el nombre completo del usuario modificador para el mensaje
-    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == aprobacion.IdUsuarioModificacion).first()
-    nombre_modificador = f"{usuario_modificacion.Nombre} {usuario_modificacion.Apellido}"
-    rol_modificador = usuario_modificacion.Role.NombreRol
-    
     return ResponseBase[ReservacionDetailResponse](
-        message=f"Reservación aprobada exitosamente por {nombre_modificador} ({rol_modificador})",
+        message="Reservación aprobada exitosamente",
         data=db_reservacion
     )
 
 @router.post("/{reservacion_id}/denegar", response_model=ResponseBase[ReservacionDetailResponse])
 def denegar_reservacion(
     reservacion_id: int = Path(..., description="ID de la reservación a denegar", ge=1),
-    denegacion: ReservacionAprobacionDenegacion = None,
+    motivo_rechazo: MotivoRechazoSimple = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """
     Denegar una reservación
     
-    Esta operación cambia el estado de una reservación a 'Denegada' y registra el motivo del rechazo
-    y quién realizó la denegación. Solo usuarios con roles de empleado o superiores pueden realizar esta acción.
+    Esta operación cambia el estado de una reservación a 'Denegada' y registra el motivo del rechazo.
+    La autorización es manejada por el middleware.
     """
-    # Verificar permisos del usuario
-    if not verificar_permisos_usuario(denegacion.IdUsuarioModificacion, db):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tiene permisos para denegar reservaciones. Se requiere rol de Empleado o superior."
-        )
-    
     db_reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == reservacion_id).first()
     if db_reservacion is None:
         raise HTTPException(status_code=404, detail="Reservación no encontrada")
@@ -358,27 +345,15 @@ def denegar_reservacion(
             detail=f"No se puede denegar la reservación porque su estado actual es '{db_reservacion.Estado}'"
         )
     
-    # Verificar si el usuario que deniega existe
-    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == denegacion.IdUsuarioModificacion).first()
-    if usuario_modificacion is None:
-        raise HTTPException(status_code=404, detail=f"Usuario con ID {denegacion.IdUsuarioModificacion} no encontrado")
-    
-    # Actualizar la reservación con información de quien denegó y motivo
+    # Actualizar la reservación con el motivo de rechazo
     db_reservacion.Estado = "Denegada"
-    db_reservacion.MotivoRechazo = denegacion.MotivoRechazo
-    db_reservacion.IdUsuarioModificacion = denegacion.IdUsuarioModificacion
-    db_reservacion.FechaModificacion = datetime.now()
+    db_reservacion.MotivoRechazo = motivo_rechazo.motivo
     
     db.commit()
     db.refresh(db_reservacion)
     
-    # Obtener el nombre completo del usuario modificador para el mensaje
-    usuario_modificacion = db.query(Usuarios).filter(Usuarios.IdUsuario == denegacion.IdUsuarioModificacion).first()
-    nombre_modificador = f"{usuario_modificacion.Nombre} {usuario_modificacion.Apellido}"
-    rol_modificador = usuario_modificacion.Role.NombreRol
-    
     return ResponseBase[ReservacionDetailResponse](
-        message=f"Reservación denegada exitosamente por {nombre_modificador} ({rol_modificador})",
+        message=f"Reservación denegada. Motivo: {motivo_rechazo.motivo}",
         data=db_reservacion
     )
 
@@ -733,4 +708,67 @@ def get_reservaciones_semana_actual(
             },
             "dias": week_data
         }
+    )
+
+@router.post("/{reservacion_id}/cambiar-estado", response_model=ResponseBase[ReservacionDetailResponse])
+def cambiar_estado_reservacion(
+    reservacion_id: int = Path(..., description="ID de la reservación a modificar", ge=1),
+    datos: CambioEstadoReservacion = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Cambiar el estado de una reservación
+    
+    Esta operación permite cambiar el estado de una reservación entre Pendiente, Aprobada y Denegada.
+    Si el nuevo estado es Denegada, se requiere especificar el motivo del rechazo.
+    La autorización es manejada por el middleware.
+    """
+    # Verificar que el estado sea válido
+    estados_validos = ["Pendiente", "Aprobada", "Denegada"]
+    if datos.estado not in estados_validos:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Estado no válido. Debe ser uno de los siguientes: {', '.join(estados_validos)}"
+        )
+    
+    # Si el estado es Denegada, verificar que se haya proporcionado un motivo
+    if datos.estado == "Denegada" and not datos.motivo_rechazo:
+        raise HTTPException(
+            status_code=400,
+            detail="Se requiere especificar el motivo del rechazo cuando el estado es Denegada"
+        )
+    
+    db_reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == reservacion_id).first()
+    if db_reservacion is None:
+        raise HTTPException(status_code=404, detail="Reservación no encontrada")
+    
+    # Actualizar el estado y otros campos según el nuevo estado
+    db_reservacion.Estado = datos.estado
+    
+    if datos.estado == "Aprobada":
+        db_reservacion.FechaConfirmacion = datetime.now()
+        db_reservacion.MotivoRechazo = None  # Limpiar motivo de rechazo si existía
+    elif datos.estado == "Denegada":
+        db_reservacion.MotivoRechazo = datos.motivo_rechazo
+        db_reservacion.FechaConfirmacion = None  # Limpiar fecha de confirmación si existía
+    else:  # Pendiente
+        db_reservacion.FechaConfirmacion = None
+        db_reservacion.MotivoRechazo = None
+    
+    db.commit()
+    db.refresh(db_reservacion)
+    
+    # Preparar mensaje según el nuevo estado
+    mensaje = ""
+    if datos.estado == "Aprobada":
+        mensaje = "Reservación cambiada a estado Aprobada exitosamente"
+    elif datos.estado == "Denegada":
+        mensaje = f"Reservación cambiada a estado Denegada. Motivo: {datos.motivo_rechazo}"
+    else:
+        mensaje = "Reservación cambiada a estado Pendiente exitosamente"
+    
+    return ResponseBase[ReservacionDetailResponse](
+        message=mensaje,
+        data=db_reservacion
     )

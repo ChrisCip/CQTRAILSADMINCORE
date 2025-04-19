@@ -35,6 +35,9 @@ class ReservacionUpdate(BaseModel):
     RequerimientosAdicionales: Optional[str] = None
     Estado: Optional[str] = None
     FechaConfirmacion: Optional[datetime] = None
+    Total: Optional[int] = None
+    SubTotal: Optional[int] = None
+    MotivoRechazo: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,6 +47,9 @@ class UsuarioSimple(BaseModel):
     Nombre: str
     Apellido: str
     Email: str
+    Activo: Optional[bool] = True
+    FechaRegistro: Optional[datetime] = None
+    IdRol: Optional[int] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,17 +58,23 @@ class UsuarioModificacion(BaseModel):
     IdUsuario: int
     Nombre: str
     Apellido: str
+    Email: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
 class EmpleadoSimple(BaseModel):
     IdEmpleado: int
+    IdUsuario: int
+    IdEmpresa: int
+    Usuario: Optional[UsuarioSimple] = None  # Información del usuario relacionado con el empleado
     
     model_config = ConfigDict(from_attributes=True)
 
 class EmpresaSimple(BaseModel):
     IdEmpresa: int
     Nombre: str
+    ContactoEmail: Optional[str] = None
+    ContactoTelefono: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,6 +89,18 @@ class ReservacionRejection(BaseModel):
     IdUsuarioModificacion: int = Field(..., description="ID del usuario que deniega la reservación")
     MotivoRechazo: str = Field(..., description="Motivo por el cual se rechaza la reservación", 
                               example="No hay vehículos disponibles para las fechas solicitadas")
+
+class MotivoRechazoSimple(BaseModel):
+    """Modelo simplificado para denegar una reservación que solo requiere el motivo"""
+    motivo: str = Field(..., description="Motivo por el cual se rechaza la reservación", 
+                       example="No hay vehículos disponibles para las fechas solicitadas")
+
+class CambioEstadoReservacion(BaseModel):
+    """Modelo para cambiar el estado de una reservación"""
+    estado: str = Field(..., description="Nuevo estado de la reservación (Pendiente, Aprobada, Denegada)", 
+                       example="Aprobada")
+    motivo_rechazo: Optional[str] = Field(None, description="Motivo del rechazo (requerido solo si estado=Denegada)",
+                                        example="No hay vehículos disponibles para las fechas solicitadas")
 
 class ReservacionAprobacionDenegacion(BaseModel):
     """Modelo unificado para aprobar o denegar una reservación"""
@@ -102,19 +126,21 @@ class ReservacionResponse(BaseModel):
     Estado: Optional[str] = "Pendiente"
     FechaReservacion: Optional[datetime] = None
     FechaConfirmacion: Optional[datetime] = None
-
+    Total: Optional[int] = None
+    SubTotal: Optional[int] = None
+    MotivoRechazo: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
 class ReservacionDetailResponse(ReservacionResponse):
     """Modelo extendido con detalles de la reservación"""
-    Usuarios1: Optional[UsuarioSimple] = None
-    Empleados1: Optional[EmpleadoSimple] = None
-    Empresas1: Optional[EmpresaSimple] = None
+    Usuarios_: Optional[UsuarioSimple] = Field(None, alias="Usuario")
+    Empleados_: Optional[EmpleadoSimple] = Field(None, alias="Empleado")
+    Empresas_: Optional[EmpresaSimple] = Field(None, alias="Empresa")
     CiudadInicio: Optional[CiudadResponse] = None
     CiudadFin: Optional[CiudadResponse] = None
-    FechaModificacion: Optional[datetime] = None
-    MotivoRechazo: Optional[str] = None
-    UsuarioModificacion: Optional[UsuarioModificacion] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True
+    )
