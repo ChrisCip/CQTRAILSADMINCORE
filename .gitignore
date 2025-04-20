@@ -57,14 +57,16 @@ nosetests.xml
 coverage.xml
 *.cover
 
+# Google Drive credentials
 credentials.json
+*-token.json
 
 # Project specific
 # Add custom ignore patterns here
-.txt
-.md
-.pdf
-.docx
-.doc
-.xls
-.xlsxcredentials.json
+*.txt
+*.md
+*.pdf
+*.docx
+*.doc
+*.xls
+*.xlsx

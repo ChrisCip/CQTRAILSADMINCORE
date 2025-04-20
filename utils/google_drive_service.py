@@ -1,10 +1,12 @@
 import os
+import json
 import logging
 from typing import Optional
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+import tempfile
 
 class GoogleDriveService:
     """Servicio para manejar operaciones con Google Drive"""
@@ -22,7 +24,13 @@ class GoogleDriveService:
         self.folder_name = folder_name
         self.logger = logging.getLogger("GoogleDriveService")
         
-        # Buscar archivo de credenciales en varias ubicaciones posibles
+        # Intentar cargar credenciales desde variables de entorno primero
+        if self._load_credentials_from_env():
+            self.logger.info("Credenciales cargadas exitosamente desde variables de entorno")
+            return
+        
+        # Si no hay variables de entorno, buscar archivo de credenciales
+        self.logger.info("Buscando archivo de credenciales...")
         if credentials_path is None:
             possible_paths = [
                 os.path.join(os.getcwd(), "credentials.json"),
@@ -47,8 +55,101 @@ class GoogleDriveService:
                     scopes=['https://www.googleapis.com/auth/drive']
                 )
             except Exception as e:
-                self.logger.error(f"Error al cargar credenciales: {str(e)}")
+                self.logger.error(f"Error al cargar credenciales desde archivo: {str(e)}")
                 self.credentials = None
+
+    def _load_credentials_from_env(self) -> bool:
+        """
+        Carga las credenciales desde variables de entorno
+        
+        Las credenciales deben estar definidas como:
+        - GOOGLE_CREDENTIALS_JSON: El contenido completo del archivo credentials.json como string
+        o como variables individuales:
+        - GOOGLE_TYPE 
+        - GOOGLE_PROJECT_ID
+        - GOOGLE_PRIVATE_KEY_ID
+        - GOOGLE_PRIVATE_KEY
+        - GOOGLE_CLIENT_EMAIL
+        - GOOGLE_CLIENT_ID
+        - GOOGLE_AUTH_URI
+        - GOOGLE_TOKEN_URI
+        - GOOGLE_AUTH_PROVIDER_X509_CERT_URL
+        - GOOGLE_CLIENT_X509_CERT_URL
+        - GOOGLE_UNIVERSE_DOMAIN
+        
+        Returns:
+            bool: True si las credenciales se cargaron correctamente, False en caso contrario
+        """
+        try:
+            # Verificar si existe la variable con el JSON completo
+            creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+            if creds_json:
+                # Crear un archivo temporal con las credenciales
+                with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
+                    temp_file.write(creds_json)
+                    temp_path = temp_file.name
+                
+                try:
+                    self.credentials = service_account.Credentials.from_service_account_file(
+                        temp_path, 
+                        scopes=['https://www.googleapis.com/auth/drive']
+                    )
+                    return True
+                finally:
+                    # Eliminar el archivo temporal
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+            
+            # Verificar si existen las variables individuales
+            required_vars = [
+                'GOOGLE_TYPE', 'GOOGLE_PROJECT_ID', 'GOOGLE_PRIVATE_KEY_ID', 
+                'GOOGLE_PRIVATE_KEY', 'GOOGLE_CLIENT_EMAIL', 'GOOGLE_CLIENT_ID',
+                'GOOGLE_AUTH_URI', 'GOOGLE_TOKEN_URI', 'GOOGLE_AUTH_PROVIDER_X509_CERT_URL',
+                'GOOGLE_CLIENT_X509_CERT_URL'
+            ]
+            
+            # Verificar que todas las variables requeridas existan
+            if not all(var in os.environ for var in required_vars):
+                self.logger.debug("No se encontraron todas las variables de entorno necesarias para las credenciales")
+                return False
+            
+            # Construir el diccionario de credenciales
+            creds_dict = {
+                "type": os.environ.get('GOOGLE_TYPE'),
+                "project_id": os.environ.get('GOOGLE_PROJECT_ID'),
+                "private_key_id": os.environ.get('GOOGLE_PRIVATE_KEY_ID'),
+                "private_key": os.environ.get('GOOGLE_PRIVATE_KEY').replace('\\n', '\n'),
+                "client_email": os.environ.get('GOOGLE_CLIENT_EMAIL'),
+                "client_id": os.environ.get('GOOGLE_CLIENT_ID'),
+                "auth_uri": os.environ.get('GOOGLE_AUTH_URI'),
+                "token_uri": os.environ.get('GOOGLE_TOKEN_URI'),
+                "auth_provider_x509_cert_url": os.environ.get('GOOGLE_AUTH_PROVIDER_X509_CERT_URL'),
+                "client_x509_cert_url": os.environ.get('GOOGLE_CLIENT_X509_CERT_URL')
+            }
+            
+            # Añadir universe_domain si está disponible
+            if 'GOOGLE_UNIVERSE_DOMAIN' in os.environ:
+                creds_dict["universe_domain"] = os.environ.get('GOOGLE_UNIVERSE_DOMAIN')
+            
+            # Crear un archivo temporal con las credenciales
+            with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
+                json.dump(creds_dict, temp_file)
+                temp_path = temp_file.name
+            
+            try:
+                self.credentials = service_account.Credentials.from_service_account_file(
+                    temp_path, 
+                    scopes=['https://www.googleapis.com/auth/drive']
+                )
+                return True
+            finally:
+                # Eliminar el archivo temporal
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                
+        except Exception as e:
+            self.logger.error(f"Error al cargar credenciales desde variables de entorno: {str(e)}")
+            return False
     
     def _get_drive_service(self):
         """Crea y devuelve el servicio de Google Drive"""
