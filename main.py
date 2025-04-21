@@ -139,7 +139,7 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Add CORS middleware with more explicit configuration
+# Add CORS middleware with more permissive configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Permitir todas las origenes en desarrollo
@@ -149,6 +149,19 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=600,  # Tiempo de caché de preflight en segundos
 )
+
+# Responder manualmente a las solicitudes preflight OPTIONS
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(request: Request, rest_of_path: str):
+    response = JSONResponse(
+        content={"message": "OK"},
+        status_code=200,
+    )
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Max-Age"] = "600"  # 10 minutos de caché
+    return response
 
 # Add Roles Permissions middleware for permission checking
 app.add_middleware(RolesPermisosMiddleware)
