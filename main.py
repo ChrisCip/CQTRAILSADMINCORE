@@ -139,13 +139,15 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Add CORS middleware
+# Add CORS middleware with more explicit configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Permitir todas las origenes en desarrollo
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,  # Tiempo de caché de preflight en segundos
 )
 
 # Add Roles Permissions middleware for permission checking
