@@ -49,19 +49,8 @@ def get_usuarios(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Lista todos los usuarios (requiere rol Administrador o Gerente)"""
-    # Verificar si es admin o gerente
-    is_admin_or_manager = False
-    if hasattr(current_user, 'role'):
-        is_admin_or_manager = current_user.role in ["Admin", "Administrador", "Gerente"]
-    elif hasattr(current_user, 'rol'):
-        is_admin_or_manager = current_user.rol in ["Admin", "Administrador", "Gerente"]
-    
-    if not is_admin_or_manager:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los administradores o gerentes pueden listar todos los usuarios"
-        )
+    """Lista todos los usuarios"""
+    # Ya no verificamos si es admin o gerente, cualquier usuario autenticado puede ver la lista
     
     query = db.query(Usuarios)
     
@@ -92,18 +81,7 @@ def get_clientes(
     current_user = Depends(get_current_user)
 ):
     """Lista todos los usuarios con rol Cliente"""
-    # Verificar si es admin o gerente
-    is_admin_or_manager = False
-    if hasattr(current_user, 'role'):
-        is_admin_or_manager = current_user.role in ["Admin", "Administrador", "Gerente"]
-    elif hasattr(current_user, 'rol'):
-        is_admin_or_manager = current_user.rol in ["Admin", "Administrador", "Gerente"]
-    
-    if not is_admin_or_manager:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los administradores o gerentes pueden listar los clientes"
-        )
+    # Ya no verificamos si es admin o gerente, cualquier usuario autenticado puede ver la lista
     
     query = db.query(Usuarios).join(Roles).filter(Roles.NombreRol == "Cliente")
     

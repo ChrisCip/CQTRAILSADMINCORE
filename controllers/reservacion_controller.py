@@ -36,7 +36,7 @@ def get_db():
         db.close()
 
 # Constantes para validación de roles
-ROLES_PERMITIDOS = ["Administrador", "Gerente", "Empleado"]  # Roles que pueden modificar estados
+ROLES_PERMITIDOS = ["Administrador", "Gerente", "Empleado", "Usuario", "Cliente"]  # Todos los roles pueden modificar estados
 ROL_USUARIO_COMUN = "Usuario"  # Rol de usuario común que no puede modificar
 
 def verificar_permisos_usuario(usuario_id: int, db: Session) -> bool:
@@ -50,8 +50,8 @@ def verificar_permisos_usuario(usuario_id: int, db: Session) -> bool:
     if not rol:
         return False
         
-    # Verificar si el usuario tiene un rol permitido
-    return rol.NombreRol in ROLES_PERMITIDOS
+    # Ahora todos los roles tienen permiso
+    return True
 
 @router.get("/", response_model=ResponseBase[List[ReservacionDetailResponse]])
 def get_reservaciones(

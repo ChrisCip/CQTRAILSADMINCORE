@@ -611,12 +611,7 @@ def limpiar_cache_permisos(
     current_user = Depends(get_current_user)
 ):
     """Limpia el caché de permisos para forzar recarga desde DB"""
-    # Verificar que el usuario sea Admin
-    if current_user.role != "Admin":
-        raise HTTPException(
-            status_code=403, 
-            detail="Solo los administradores pueden limpiar el caché"
-        )
+    # Ya no verificamos que el usuario sea Admin, cualquier usuario autenticado puede limpiar el caché
         
     # Limpiar el caché
     clear_permissions_cache()
@@ -639,12 +634,7 @@ def limpiar_cache_especifico(
     current_user = Depends(get_current_user)
 ):
     """Limpia el caché de permisos para un rol y controlador específicos"""
-    # Verificar que el usuario sea Admin
-    if current_user.role != "Admin":
-        raise HTTPException(
-            status_code=403, 
-            detail="Solo los administradores pueden limpiar el caché"
-        )
+    # Ya no verificamos que el usuario sea Admin, cualquier usuario autenticado puede limpiar el caché
     
     # Normalizar rol y controlador a minúsculas para buscar en la caché
     role_lower = role.lower()

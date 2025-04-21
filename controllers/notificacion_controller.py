@@ -60,7 +60,7 @@ def get_notificacion(
 def create_notificacion(
     notificacion: NotificacionCreate, 
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["Administrador", "Gerente"]))  # Añadir protección JWT con roles
+    current_user = Depends(get_current_user)  # Permitir a cualquier usuario autenticado
 ):
     """Create a new notification"""
     # Check if reservation exists
