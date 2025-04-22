@@ -59,7 +59,7 @@ Content-Type: application/json
 
 {
   "IdUsuarioModificacion": 1,
-  "Comentario": "Reservación aprobada después de verificar disponibilidad"
+  "Comentario": "Reservación Aceptada después de verificar disponibilidad"
 }
 
 # Denegar una reservación (registra quién la denegó)
@@ -71,7 +71,7 @@ Content-Type: application/json
   "MotivoRechazo": "No hay vehículos disponibles para las fechas solicitadas"
 }
 
-# Consultar reservación aprobada (mostrará quién la aprobó)
+# Consultar reservación Aceptada (mostrará quién la aprobó)
 GET http://127.0.0.1:8000/reservaciones/1
 Accept: application/json
 
@@ -94,7 +94,7 @@ Content-Type: application/json
 
 {
   "IdUsuarioModificacion": 1,  # Suponiendo que el usuario con ID 1 tiene rol "Empleado" o superior
-  "Comentario": "Reservación aprobada después de verificar disponibilidad"
+  "Comentario": "Reservación Aceptada después de verificar disponibilidad"
 }
 
 ### Denegar una reservación con un usuario con permisos

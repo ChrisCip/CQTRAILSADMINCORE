@@ -14,7 +14,7 @@ class ReservacionBase(BaseModel):
     ciudadfinid: Optional[int] = Field(None, description="ID de la ciudad de fin")
     RutaPersonalizada: Optional[str] = Field(None, description="Descripción de ruta personalizada")
     RequerimientosAdicionales: Optional[str] = Field(None, description="Requerimientos adicionales de la reservación")
-    Estado: Optional[str] = Field("Pendiente", description="Estado de la reservación (Pendiente, Aprobada, Denegada)")
+    Estado: Optional[str] = Field("Pendiente", description="Estado de la reservación (Pendiente, Aceptada, Denegada)")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -97,8 +97,8 @@ class MotivoRechazoSimple(BaseModel):
 
 class CambioEstadoReservacion(BaseModel):
     """Modelo para cambiar el estado de una reservación"""
-    estado: str = Field(..., description="Nuevo estado de la reservación (Pendiente, Aprobada, Denegada)", 
-                       example="Aprobada")
+    estado: str = Field(..., description="Nuevo estado de la reservación (Pendiente, Aceptada, Denegada)", 
+                       example="Aceptada")
     motivo_rechazo: Optional[str] = Field(None, description="Motivo del rechazo (requerido solo si estado=Denegada)",
                                         example="No hay vehículos disponibles para las fechas solicitadas")
 

@@ -57,7 +57,7 @@ def verificar_permisos_usuario(usuario_id: int, db: Session) -> bool:
 def get_reservaciones(
     skip: int = Query(0, description="Número de registros a omitir", ge=0),
     limit: int = Query(100, description="Número máximo de registros a retornar", le=100),
-    estado: Optional[str] = Query(None, description="Filtrar por estado (Pendiente, Aprobada, Denegada)"),
+    estado: Optional[str] = Query(None, description="Filtrar por estado (Pendiente, Aceptada, Denegada)"),
     fecha_inicio: Optional[datetime] = Query(None, description="Filtrar por fecha de inicio mínima"),
     fecha_fin: Optional[datetime] = Query(None, description="Filtrar por fecha fin máxima"),
     id_usuario: Optional[int] = Query(None, description="Filtrar por ID de usuario"),
@@ -134,8 +134,8 @@ def get_reservacion(
     
     # Preparar mensaje según el estado de la reservación
     mensaje = "Detalles de la reservación"
-    if reservacion.Estado == "Aprobada":
-        mensaje = "Reservación aprobada"
+    if reservacion.Estado == "Aceptada":
+        mensaje = "Reservación Aceptada"
     elif reservacion.Estado == "Denegada" and reservacion.MotivoRechazo:
         mensaje = f"Reservación denegada: {reservacion.MotivoRechazo}"
     elif reservacion.Estado == "Denegada":
@@ -261,8 +261,8 @@ def update_reservacion(
     if reservacion.Estado == "Denegada" and reservacion.MotivoRechazo:
         db_reservacion.MotivoRechazo = reservacion.MotivoRechazo
     
-    # If updating status to "Aprobada", set confirmation date
-    if reservacion.Estado == "Aprobada" and db_reservacion.Estado != "Aprobada":
+    # If updating status to "Aceptada", set confirmation date
+    if reservacion.Estado == "Aceptada" and db_reservacion.Estado != "Aceptada":
         db_reservacion.FechaConfirmacion = datetime.now()
     
     # Perform a final validation before committing
@@ -295,7 +295,7 @@ def aprobar_reservacion(
     """
     Aprobar una reservación
     
-    Esta operación cambia el estado de una reservación a 'Aprobada'.
+    Esta operación cambia el estado de una reservación a 'Aceptada'.
     La autorización es manejada por el middleware.
     """
     db_reservacion = db.query(Reservaciones).filter(Reservaciones.IdReservacion == reservacion_id).first()
@@ -310,14 +310,14 @@ def aprobar_reservacion(
         )
     
     # Actualizar la reservación a estado aprobado
-    db_reservacion.Estado = "Aprobada"
+    db_reservacion.Estado = "Aceptada"
     db_reservacion.FechaConfirmacion = datetime.now()
     
     db.commit()
     db.refresh(db_reservacion)
     
     return ResponseBase[ReservacionDetailResponse](
-        message="Reservación aprobada exitosamente",
+        message="Reservación Aceptada exitosamente",
         data=db_reservacion
     )
 
@@ -720,12 +720,12 @@ def cambiar_estado_reservacion(
     """
     Cambiar el estado de una reservación
     
-    Esta operación permite cambiar el estado de una reservación entre Pendiente, Aprobada y Denegada.
+    Esta operación permite cambiar el estado de una reservación entre Pendiente, Aceptada y Denegada.
     Si el nuevo estado es Denegada, se requiere especificar el motivo del rechazo.
     La autorización es manejada por el middleware.
     """
     # Verificar que el estado sea válido
-    estados_validos = ["Pendiente", "Aprobada", "Denegada"]
+    estados_validos = ["Pendiente", "Aceptada", "Denegada"]
     if datos.estado not in estados_validos:
         raise HTTPException(
             status_code=400,
@@ -746,7 +746,7 @@ def cambiar_estado_reservacion(
     # Actualizar el estado y otros campos según el nuevo estado
     db_reservacion.Estado = datos.estado
     
-    if datos.estado == "Aprobada":
+    if datos.estado == "Aceptada":
         db_reservacion.FechaConfirmacion = datetime.now()
         db_reservacion.MotivoRechazo = None  # Limpiar motivo de rechazo si existía
     elif datos.estado == "Denegada":
@@ -761,8 +761,8 @@ def cambiar_estado_reservacion(
     
     # Preparar mensaje según el nuevo estado
     mensaje = ""
-    if datos.estado == "Aprobada":
-        mensaje = "Reservación cambiada a estado Aprobada exitosamente"
+    if datos.estado == "Aceptada":
+        mensaje = "Reservación cambiada a estado Aceptada exitosamente"
     elif datos.estado == "Denegada":
         mensaje = f"Reservación cambiada a estado Denegada. Motivo: {datos.motivo_rechazo}"
     else:
