@@ -142,7 +142,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Add CORS middleware with more permissive configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permitir todas las origenes en desarrollo
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://cq-trails-admin-front-lib5.vercel.app",
+        "https://cqtrailsadmincore-production.up.railway.app"
+    ],  # Origenes específicos permitidos
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -153,13 +158,26 @@ app.add_middleware(
 # Responder manualmente a las solicitudes preflight OPTIONS
 @app.options("/{rest_of_path:path}")
 async def preflight_handler(request: Request, rest_of_path: str):
+    origin = request.headers.get("origin", "")
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://cq-trails-admin-front-lib5.vercel.app",
+        "https://cqtrailsadmincore-production.up.railway.app"
+    ]
+    
     response = JSONResponse(
         content={"message": "OK"},
         status_code=200,
     )
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    
+    # Permitir el origen específico o denegar
+    if origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
     response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Max-Age"] = "600"  # 10 minutos de caché
     return response
 
